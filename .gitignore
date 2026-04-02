@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs & checkpoints
+logs/
+checkpoints/
+wandb/
+runs/
+*.log
+
+# Data (generated)
+data_cache/
+results/
+outputs/
+*.h5
+*.hdf5
+*.lmdb
+
+# LaTeX
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+paper/*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.bak

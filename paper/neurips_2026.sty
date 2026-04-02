@@ -1,0 +1,62 @@
+% neurips_2026.sty — NeurIPS 2026 style file (simplified)
+% Based on the official NeurIPS style template
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{neurips_2026}[2026/01/15 NeurIPS 2026 submission style]
+
+\newif\if@nipsfinal
+\@nipsfinalfalse
+\DeclareOption{final}{\@nipsfinaltrue}
+\DeclareOption{preprint}{\@nipsfinalfalse}
+\ProcessOptions\relax
+
+% Page geometry
+\usepackage[letterpaper,
+  textwidth=5.5in,
+  textheight=9in,
+  marginparwidth=0.7in,
+  top=1in,
+  headheight=14pt]{geometry}
+
+% Fonts and typography
+\usepackage{microtype}
+\usepackage{times}
+
+% Section formatting
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\itshape}{\thesubsubsection}{1em}{}
+
+% Line spacing
+\linespread{1.0}
+
+% Paragraph
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{1em}
+
+% Headers
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\if@nipsfinal
+  \fancyhead[C]{}
+\else
+  \fancyhead[C]{\small Submitted to NeurIPS 2026}
+\fi
+\fancyfoot[C]{\thepage}
+
+% Abstract
+\renewenvironment{abstract}{%
+  \centerline{\large\bfseries Abstract}%
+  \vspace{0.5ex}%
+  \begin{quote}\small%
+}{%
+  \end{quote}%
+}
+
+% Footnotes
+\renewcommand{\footnoterule}{\kern -3pt \hrule width 5cm \kern 2.6pt}
+
+\endinput

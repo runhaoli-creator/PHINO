@@ -1,0 +1,68 @@
+# DynaCLIP Data Generation Configuration
+
+simulation:
+  num_envs: 64
+  sim_freq: 100
+  control_freq: 20
+  device: "cuda"
+
+objects:
+  num_geometries: 50
+  num_textures_per_geometry: 5
+  total_visual_variants: 250
+
+physics:
+  num_configs_per_geometry: 100
+  total_configs: 5000
+  mass_range: [0.05, 10.0]  # log-uniform
+  static_friction_range: [0.05, 1.5]  # uniform
+  restitution_range: [0.0, 0.95]  # uniform
+  dynamic_friction_factor: 0.8  # dynamic = 0.8 * static
+
+diagnostic_actions:
+  - name: "push_x"
+    type: "push"
+    velocity: 0.05
+    duration: 1.0
+    direction: [1.0, 0.0, 0.0]
+  - name: "push_y"
+    type: "push"
+    velocity: 0.05
+    duration: 1.0
+    direction: [0.0, 1.0, 0.0]
+  - name: "grasp_lift_release"
+    type: "grasp_lift"
+    velocity: 0.02
+    duration: 2.0
+    direction: [0.0, 0.0, 1.0]
+  - name: "lateral_flick"
+    type: "flick"
+    velocity: 0.3
+    duration: 0.2
+    direction: [1.0, 0.5, 0.0]
+  - name: "slow_press_down"
+    type: "press"
+    velocity: 0.02
+    duration: 1.5
+    direction: [0.0, 0.0, -1.0]
+
+trajectory:
+  timesteps: 50
+  hz: 20
+  dims: 13  # pos(3) + quat(4) + lin_vel(3) + ang_vel(3)
+
+rendering:
+  num_views_per_config: 20
+  num_poses_per_config: 5
+  resolution: [224, 224]
+  azimuth_range: [0, 360]
+  elevation_range: [15, 45]
+  distance_range: [0.4, 0.8]
+  total_images: 100000
+
+invisible_physics_test:
+  num_pairs: 500
+
+output:
+  data_dir: "data_cache/dynaclip_data"
+  seed: 42

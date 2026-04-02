@@ -1,0 +1,57 @@
+# Evaluation Configuration
+
+# Backbones to evaluate (8 total)
+backbones:
+  - dynaclip
+  - dinov2_vitb14
+  - dinov2_vitl14
+  - siglip
+  - clip_vitl14
+  - r3m
+  - vip
+  - mcr
+
+# Benchmarks for Experiment 4
+benchmarks:
+  - libero10
+  - libero_long
+  - calvin
+  - maniskill3
+  - physics_varying
+  - rlbench18
+
+# Experiment 1: Linear Probing
+linear_probing:
+  num_seeds: 5
+  num_epochs: 100
+  lr: 1.0e-3
+  properties:
+    - mass
+    - static_friction
+    - restitution
+    - material_category
+
+# Experiment 2: Invisible Physics
+invisible_physics:
+  num_pairs: 500
+
+# Experiment 3: World Model
+world_model:
+  rssm:
+    stoch_size: 32
+    stoch_classes: 32
+    deter_size: 512
+  horizons: [1, 5, 10, 20]
+  num_trajectories: 10000
+  tasks: ["push", "pick_and_place", "stack"]
+
+# Experiment 5: Zero-Shot Inference
+zero_shot:
+  library_size: 1000
+  k_neighbors: 5
+
+# General
+num_seeds: 3
+num_episodes: 100
+device: "cuda"
+output_dir: "results"
