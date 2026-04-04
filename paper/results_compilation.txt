@@ -61,6 +61,7 @@ category alone.
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  EXPERIMENT 3: INVISIBLE PHYSICS TEST                                      ║
 ║  Task: Predict physics from frozen features on identical images             ║
+║  ⚠️  NOT RERUN WITH V2 — uses V1 checkpoint data. See FIXES_V3.md FIX 4.  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 Backbone          Heavier Acc↑   AUC↑     Mass R²↑
@@ -103,6 +104,9 @@ reflecting that k-NN is dominated by category-level structure.
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  EXPERIMENT 5: ABLATION STUDIES (16 variants)                              ║
 ║  Training at 10K steps unless noted; full model at 30K steps               ║
+║  ⚠️  NOT RERUN WITH V2 — uses V1 config (SoftInfoNCE + hard mining).      ║
+║  V2 uses PairwisePhysicsRnCLoss + no hard mining + WiSE-FT.               ║
+║  This ablation does NOT match the V2 model. See FIXES_V3.md FIX 1.        ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 Variant                    Mass R²   Fric R²   Rest R²   Mat Acc
@@ -144,6 +148,7 @@ Key findings:
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  EXPERIMENT 6: ManiSkill3 PickCube PHYSICS ROBUSTNESS                      ║
 ║  BC success rate (%) under standard and varied physics                     ║
+║  ⚠️  NOT RERUN WITH V2 — uses V1 checkpoint data. See FIXES_V3.md FIX 5.  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 Backbone      Standard   Heavy   Varied   Gen. Ratio↑
@@ -160,6 +165,7 @@ degradation under physics variation. CLIP degrades 24% (0.76×), SigLIP 40%.
 
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  EXPERIMENT 7: RSSM WORLD MODEL EVALUATION                                ║
+║  ⚠️  NOT RERUN WITH V2 — uses V1 checkpoint data. See FIXES_V3.md FIX 6.  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 (a) Synthetic trajectories — Best validation R²:
@@ -327,6 +333,8 @@ DynaCLIP improves +139% R² over DINOv2-B/14 base model (0.122 vs 0.051).
 
 ================================================================================
 SUMMARY: DynaCLIP HEADLINE RESULTS
+⚠️  Results marked with * are from V1 checkpoint — NOT verified with V2.
+    Do not cite these as V2 results. See FIXES_V3.md for rerun plan.
 ================================================================================
 
 Experiment                  Metric              DynaCLIP   Best Baseline  Rank
@@ -335,9 +343,9 @@ Linear Probing (mass)       R²                  0.553      0.439 (DINO-L) #1/11
 Linear Probing (friction)   R²                  0.378      0.295 (CLIP)   #1/11
 Linear Probing (restitution)R²                  0.652      0.605 (DINO-L) #1/11
 Material Clustering         NMI                 0.424      0.350 (CLIP)   #1/9
-Invisible Physics           Mass R²             0.300     -0.018 (DINO-L) #1/7
+Invisible Physics*          Mass R²             0.300     -0.018 (DINO-L) #1/7
 k-NN Physics (mass, k=5)    R²                  0.677      0.674 (CLIP)   #1/11
-ManiSkill3 Robustness       Gen. Ratio          1.02       0.88 (DINO)    #1/5
+ManiSkill3 Robustness*      Gen. Ratio          1.02       0.88 (DINO)    #1/5
 LIBERO-10                   Avg Success Rate    60.4%      54.5% (SigLIP) #1/10
 Physics Queries (mass)      Spearman ρ          0.647      0.617 (CLIP)   #1/4
 Physics Queries (restit.)   Spearman ρ          0.810      0.767 (DINO)   #1/4
@@ -346,7 +354,8 @@ CALVIN Cross-Env Gen.       Score               0.036      0.035 (CLIP)   #1/10
 CALVIN Offline (CosSim)     Cosine Similarity   0.479      0.475 (MCR)    #1/9
 DROID-100 (CosSim)          Cosine Similarity   0.787      0.887 (R3M)    #8/9
 
-→ DynaCLIP ranks #1 on 13 out of 14 headline metrics.
+→ Of the 14 metrics, 4 are stale V1 data (*) and need rerunning with V2.
+→ Among verified V2 results, DynaCLIP ranks #1 on 9 out of 10 metrics.
 → The single non-#1 (DROID-100) reveals that offline metrics anti-correlate
    with closed-loop success (ρ = -0.82), making #8 on DROID the scientifically
    most interesting result.
