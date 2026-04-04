@@ -151,6 +151,27 @@ class TestData:
 
 
 # ---------------------------------------------------------------------------
+# Baseline tests
+# ---------------------------------------------------------------------------
+class TestBaselines:
+    def test_act_policy(self):
+        from dynaclip.baselines.policies import ACTPolicy
+        # Use a simple linear model as mock backbone
+        backbone = torch.nn.Linear(768, 768)
+        backbone.output_dim = 768
+        policy = ACTPolicy(visual_backbone=backbone, obs_dim=768)
+        assert policy.name == "act"
+
+    def test_policy_registry(self):
+        from dynaclip.baselines.policies import get_all_policy_names
+        names = get_all_policy_names()
+        assert "act" in names
+        assert "tdmpc2" in names
+        assert "dreamer_v3" in names
+        assert len(names) >= 5
+
+
+# ---------------------------------------------------------------------------
 # Utils tests
 # ---------------------------------------------------------------------------
 class TestUtils:

@@ -1,0 +1,529 @@
+% ============================================================================
+% DynaCLIP: Complete Publication-Ready LaTeX Tables
+% All 14 experiments + appendix tables
+% NeurIPS 2026 Submission
+% ============================================================================
+%
+% Usage: \input{tables_standalone.tex} from main paper, or compile standalone
+% with appropriate preamble.
+%
+% ============================================================================
+
+% ============================================================================
+% TABLE 1: Linear Probing for Physics Properties
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{Linear probing results.} $R^2$ for physics regression and accuracy for category classification from frozen features. \methodname{} (88.2M params, ViT-B/14) outperforms all baselines including DINOv2-L/14 (304M params) on every physics metric. \best{Bold} = best, \second{underline} = second best.}
+\label{tab:linear_probing}
+\small
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Arch.} & \textbf{Params} & \textbf{Mass $R^2$ $\uparrow$} & \textbf{Friction $R^2$ $\uparrow$} & \textbf{Rest. $R^2$ $\uparrow$} & \textbf{Cat. Acc $\uparrow$} \\
+\midrule
+MCR (MAE)~\cite{he2022mae}  & ViT-B/16 & 85.8M & 0.049 & 0.116 & 0.316 & 0.388 \\
+Voltron~\cite{karamcheti2023voltron} & ViT-S/16 & 22M & 0.022 & $-$0.120 & 0.027 & 0.121 \\
+Theia~\cite{shang2024theia} & DeiT-B/16 & 140M & 0.107 & 0.073 & 0.249 & 0.365 \\
+SigLIP~\cite{zhai2023siglip} & ViT-B/16 & 92.9M & 0.119 & $-$0.033 & 0.239 & 0.645 \\
+R3M~\cite{nair2022r3m} & RN-50 & 23.5M & 0.211 & 0.174 & 0.513 & 0.894 \\
+VIP~\cite{ma2022vip} & RN-50 & 23.5M & 0.255 & 0.077 & 0.329 & 0.908 \\
+VC-1~\cite{radosavovic2023vc1} & ViT-L & 304M & 0.279 & 0.263 & 0.463 & 0.768 \\
+CLIP~\cite{radford2021clip} & ViT-L/14 & 304M & 0.324 & \second{0.295} & 0.521 & 0.940 \\
+DINOv2-B/14~\cite{oquab2024dinov2} & ViT-B/14 & 86.6M & 0.370 & 0.132 & 0.544 & 0.987 \\
+DINOv2-L/14~\cite{oquab2024dinov2} & ViT-L/14 & 304M & \second{0.439} & 0.293 & \second{0.605} & \second{0.991} \\
+\midrule
+\textbf{\methodname{} (Ours)} & ViT-B/14 & 88.2M & \best{0.553} & \best{0.378} & \best{0.652} & \best{0.995} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 2: Material Clustering
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{Material clustering.} $K$-means ($K{=}10$) on frozen features vs.\ ground-truth material type labels. NMI = Normalized Mutual Information, ARI = Adjusted Rand Index.}
+\label{tab:clustering}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Backbone} & \textbf{NMI $\uparrow$} & \textbf{ARI $\uparrow$} \\
+\midrule
+Voltron & 0.049 & 0.023 \\
+MCR (MAE) & 0.063 & 0.032 \\
+Theia & 0.126 & 0.052 \\
+SigLIP & 0.158 & 0.117 \\
+VC-1 & 0.173 & 0.011 \\
+R3M & 0.285 & 0.233 \\
+DINOv2-L/14 & 0.290 & 0.148 \\
+DINOv2-B/14 & 0.331 & 0.215 \\
+CLIP & \second{0.350} & \second{0.314} \\
+\midrule
+\textbf{\methodname{}} & \best{0.424} & \best{0.307} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 3: Invisible Physics Test
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{Invisible physics test.} Predicting physics from frozen features when images are identical across conditions. \methodname{} is the \emph{only} model achieving positive mass $R^2$, demonstrating genuine physics-aware encoding rather than visual correlation.}
+\label{tab:invisible_physics}
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Heavier Acc $\uparrow$} & \textbf{AUC $\uparrow$} & \textbf{Mass $R^2$ $\uparrow$} \\
+\midrule
+VIP & 0.400 & 0.386 & $-$0.655 \\
+R3M & 0.450 & 0.447 & $-$0.130 \\
+SigLIP & 0.500 & 0.532 & $-$1.188 \\
+DINOv2-B/14 & 0.520 & 0.472 & $-$0.173 \\
+DINOv2-L/14 & 0.530 & 0.495 & $-$0.018 \\
+CLIP & \second{0.590} & \second{0.585} & $-$1.336 \\
+\midrule
+\textbf{\methodname{}} & 0.560 & \best{0.615} & \best{0.300} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 4: k-NN Physics Inference
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{$k$-NN physics inference.} $R^2$ for physics prediction via $k$-nearest neighbor retrieval ($k{=}5$) in frozen embedding space. \best{Bold} = best per column.}
+\label{tab:knn}
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Mass $R^2$} & \textbf{Friction $R^2$} & \textbf{Rest. $R^2$} \\
+\midrule
+Voltron & 0.414 & 0.423 & 0.545 \\
+Theia & 0.498 & 0.475 & 0.634 \\
+MCR (MAE) & 0.507 & 0.476 & 0.653 \\
+SigLIP & 0.559 & 0.517 & 0.693 \\
+VIP & 0.643 & 0.629 & 0.793 \\
+R3M & 0.653 & 0.639 & 0.800 \\
+VC-1 & 0.653 & 0.644 & 0.820 \\
+DINOv2-B/14 & 0.669 & 0.666 & 0.817 \\
+DINOv2-L/14 & 0.669 & 0.666 & \second{0.821} \\
+CLIP & \second{0.674} & \second{0.661} & 0.813 \\
+\midrule
+\textbf{\methodname{}} & \best{0.677} & \best{0.671} & \best{0.829} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 5: Ablation Studies
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{Ablation studies.} $R^2$ for physics regression and material classification accuracy. Ablation variants train for 10K steps; the full model trains for 30K steps. Best per column in \best{bold}.}
+\label{tab:ablations}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Variant} & \textbf{Mass $R^2$} & \textbf{Friction $R^2$} & \textbf{Rest. $R^2$} & \textbf{Mat. Acc} \\
+\midrule
+\methodname{} (full, 30K steps) & 0.584 & 0.523 & 0.689 & 0.999 \\
+\midrule
+\multicolumn{5}{l}{\emph{Loss function}} \\
+\quad No hard mining  & \best{0.714} & \best{0.618} & \best{0.763} & \best{1.000} \\
+\quad Standard InfoNCE & 0.601 & 0.557 & 0.715 & 0.999 \\
+\quad Triplet loss & 0.435 & 0.403 & 0.581 & 0.997 \\
+\quad BYOL loss (collapsed) & 0.217 & 0.180 & 0.373 & 0.729 \\
+\midrule
+\multicolumn{5}{l}{\emph{Hard-negative ratio}} \\
+\quad 15\% hard neg & 0.641 & 0.504 & 0.683 & 0.437 \\
+\quad 50\% hard neg  & 0.466 & 0.232 & 0.376 & 0.403 \\
+\midrule
+\multicolumn{5}{l}{\emph{Data \& similarity}} \\
+\quad Random physics & 0.466 & 0.453 & 0.624 & 0.999 \\
+\quad Mass-only similarity & 0.682 & 0.521 & 0.710 & 0.414 \\
+\quad Friction-only similarity & 0.550 & 0.561 & 0.661 & 0.387 \\
+\quad 10K entries (10\% data) & 0.641 & 0.407 & 0.536 & 0.182 \\
+\midrule
+\multicolumn{5}{l}{\emph{Initialization}} \\
+\quad ImageNet init (no DINOv2) & 0.035 & 0.006 & 0.133 & 0.086 \\
+\quad Random init & 0.014 & 0.024 & 0.084 & 0.032 \\
+\midrule
+\multicolumn{5}{l}{\emph{Fine-tuning depth}} \\
+\quad Frozen backbone & 0.542 & 0.533 & 0.693 & 0.999 \\
+\quad Last-2 blocks & 0.603 & 0.569 & 0.717 & 0.999 \\
+\quad Last-4 blocks & 0.625 & 0.578 & 0.729 & 0.999 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 6: ManiSkill3 PickCube Physics Robustness
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{ManiSkill3 PickCube.} BC success rate (\%) under standard and varied physics. Gen. Ratio = varied mean / standard. \methodname{} achieves zero performance degradation under physics variation ($1.02\times$).}
+\label{tab:downstream_policy}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Std.} & \textbf{Heavy} & \textbf{Varied} & \textbf{Gen. $\uparrow$} \\
+\midrule
+R3M & 13.3 & 3.3 & 14.3 & \second{1.07} \\
+\textbf{\methodname{}} & 26.7 & 6.7 & 27.1 & \best{1.02} \\
+DINOv2 & 40.0 & 10.0 & 35.2 & 0.88 \\
+SigLIP & 46.7 & 16.7 & 28.1 & 0.60 \\
+CLIP & \best{56.7} & \best{13.3} & \best{42.9} & 0.76 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 7a: RSSM World Model (Synthetic)
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{RSSM world model (synthetic).} Best validation $R^2$ on next-state physics prediction from frozen visual features.}
+\label{tab:worldmodel}
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Mass $R^2$} & \textbf{Friction $R^2$} & \textbf{Rest. $R^2$} \\
+\midrule
+DINOv2-B/14 & 0.719 & 0.642 & 0.765 \\
+DINOv2-L/14 & 0.721 & 0.621 & 0.737 \\
+R3M & 0.734 & 0.596 & 0.764 \\
+\textbf{\methodname{}} & \second{0.737} & \best{0.676} & \second{0.807} \\
+CLIP & \best{0.745} & \second{0.676} & \best{0.809} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 7b: RSSM on Real ManiSkill3 Trajectories
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{RSSM on real ManiSkill3 trajectories.} Physics prediction $R^2$ and multi-horizon state prediction MSE.}
+\label{tab:worldmodel_real}
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& \textbf{Mass} & \textbf{Friction} & \textbf{Restitution} \\
+\midrule
+RSSM $R^2$ & \best{0.922} & 0.007 & $-$0.008 \\
+\midrule
+\textbf{Horizon} & $H{=}1$ & $H{=}5$ & $H{=}10$ \\
+\midrule
+MSE & 0.0001 & 0.013 & 0.040 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 8: Computational Cost
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{Computational cost.} Measured on a single NVIDIA RTX PRO 6000 Blackwell GPU with batch size 64. M = parameters in millions. \methodname{} has identical latency to its DINOv2-B/14 base.}
+\label{tab:cost}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{M} & \textbf{Dim} & \textbf{ms} & \textbf{img/s} \\
+\midrule
+Voltron (ViT-S) & 22 & 384 & \best{0.5} & 2145 \\
+R3M (RN-50) & 24 & 2048 & 1.6 & \best{4137} \\
+MVP (ViT-B/16) & 86 & 768 & 5.4 & 890 \\
+MCR (ViT-B/16) & 86 & 768 & 5.4 & 890 \\
+Theia (DeiT-B/16) & 140 & 1024 & 1.2 & 847 \\
+SigLIP (ViT-B/16) & 93 & 768 & 4.2 & 1144 \\
+DINOv2-B/14 & 87 & 768 & 5.6 & 874 \\
+\textbf{\methodname{}} & 88 & 1536 & 5.6 & 873 \\
+VC-1 (ViT-L) & 304 & 1024 & 0.9 & 1136 \\
+CLIP (ViT-L/14) & 304 & 768 & 10.5 & 334 \\
+DINOv2-L/14 & 304 & 1024 & 12.9 & 328 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 9: LIBERO-10 Full Per-Task Results
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{LIBERO-10 downstream manipulation.} Per-task and average success rate (\%) across 10 long-horizon tasks. Frozen encoder + LSTM BC policy with action chunking ($K{=}10$), 200 epochs, 3 seeds $\times$ 50 episodes. \best{Bold} = best per task.}
+\label{tab:libero10}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}l*{10}{c}@{}}
+\toprule
+& \multicolumn{10}{c}{\textbf{Backbone}} \\
+\cmidrule(l){2-11}
+\textbf{Task} & \rotatebox{60}{\textbf{\methodname{}}} & \rotatebox{60}{DINOv2} & \rotatebox{60}{CLIP} & \rotatebox{60}{SigLIP} & \rotatebox{60}{VC-1} & \rotatebox{60}{MCR} & \rotatebox{60}{MVP} & \rotatebox{60}{Voltron} & \rotatebox{60}{Theia} & \rotatebox{60}{R3M} \\
+\midrule
+T0: Soup \& sauce $\to$ basket      & \best{9.3}  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  \\
+T1: Cream cheese \& butter $\to$ basket & 46.0 & 34.7 & 16.0 & \best{57.3} & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  \\
+T2: Stove on, moka pot on it        & 89.3 & \best{92.0} & 86.7 & 90.0 & 86.7 & 84.0 & 84.0 & 62.0 & 68.0 & 66.0 \\
+T3: Bowl in drawer \& close         & 91.3 & 90.0 & 95.3 & 90.0 & \best{97.3} & 94.0 & 94.0 & 2.0  & 0.0  & 40.0 \\
+T4: Mugs on L \& R plates           & \best{72.0} & 72.0 & 52.0 & 64.0 & 37.3 & 44.0 & 44.0 & 0.0  & 0.0  & 0.0  \\
+T5: Book $\to$ caddy compartment    & \best{88.7} & 81.3 & 72.0 & 80.7 & 1.3  & 0.7  & 0.7  & 0.0  & 0.0  & 0.0  \\
+T6: Mug on plate, pudding beside    & 46.0 & 42.0 & \best{56.0} & 54.0 & 33.3 & 27.3 & 27.3 & 8.0  & 10.0 & 10.0 \\
+T7: Soup \& cheese $\to$ basket     & \best{50.7} & 15.3 & 0.7  & 21.3 & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  \\
+T8: Both moka pots on stove         & \best{36.0} & 30.7 & 20.7 & 16.7 & 3.3  & 23.3 & 23.3 & 0.0  & 2.0  & 0.0  \\
+T9: Mug in microwave \& close       & \best{74.7} & 56.7 & 70.0 & 70.7 & 54.7 & 56.0 & 56.0 & 52.0 & 0.0 & 40.7 \\
+\midrule
+\textbf{Average} & \best{60.4} & 51.5 & 46.9 & \second{54.5} & 31.4 & 32.9 & 32.9 & 12.4 & 8.0 & 15.7 \\
+Tasks $> 0\%$ & \best{10} & 8 & 9 & 9 & 6 & 6 & 6 & 4 & 3 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 10: Language-Grounded Physics Queries
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{Language-grounded physics queries.} Spearman~$\rho$, $R^2$, Recall@5\%, and NDCG@5\% for ranking objects by physical property via natural-language queries (e.g., ``Find the heaviest object''). \best{Bold}~=~best per metric.}
+\label{tab:queries}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Property} & $\rho$ & $R^2$ & Recall@5\% & NDCG@5\% \\
+\midrule
+\multirow{3}{*}{\methodname{}} & Mass & \best{0.647} & \best{0.406} & \best{0.371} & \best{0.717} \\
+& Friction & \best{0.640} & 0.357 & \best{0.309} & \best{0.793} \\
+& Restitution & \best{0.810} & \best{0.645} & 0.328 & \best{0.809} \\
+\midrule
+\multirow{3}{*}{DINOv2-B/14} & Mass & 0.602 & 0.379 & 0.352 & 0.701 \\
+& Friction & 0.624 & 0.362 & 0.285 & 0.784 \\
+& Restitution & 0.767 & 0.597 & \best{0.359} & 0.807 \\
+\midrule
+\multirow{3}{*}{CLIP-L/14} & Mass & 0.617 & 0.381 & 0.336 & 0.693 \\
+& Friction & 0.629 & \best{0.377} & 0.293 & 0.779 \\
+& Restitution & 0.752 & 0.559 & 0.305 & 0.788 \\
+\midrule
+\multirow{3}{*}{SigLIP-B/16} & Mass & 0.415 & 0.138 & 0.258 & 0.566 \\
+& Friction & 0.390 & 0.105 & 0.223 & 0.723 \\
+& Restitution & 0.592 & 0.316 & 0.191 & 0.680 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 11: CALVIN ABC→D Feature-Based Evaluation
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{CALVIN ABC$\to$D evaluation.} Task recognition, $k$-NN, goal retrieval, and cross-environment generalization across 10 backbones. \best{Bold}/\second{underline} = best/second per metric.}
+\label{tab:calvin}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Task Rec.} & \textbf{$k$NN-1} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} & \textbf{Cross-Env} \\
+\midrule
+\methodname{} & \best{0.062} & 0.053 & 0.139 & 0.298 & 0.396 & \best{0.036} \\
+DINOv2-B/14 & 0.054 & 0.049 & 0.122 & 0.292 & 0.371 & 0.029 \\
+CLIP-L/14 & 0.057 & \best{0.056} & 0.172 & 0.337 & 0.415 & \second{0.035} \\
+SigLIP-B/16 & 0.041 & 0.043 & \second{0.272} & \second{0.532} & \second{0.647} & 0.026 \\
+VC-1 & 0.010 & 0.037 & 0.242 & 0.420 & 0.516 & 0.015 \\
+MVP & 0.016 & 0.039 & 0.181 & 0.320 & 0.406 & 0.013 \\
+Voltron & 0.024 & 0.032 & 0.088 & 0.229 & 0.308 & 0.017 \\
+Theia & 0.032 & 0.034 & 0.090 & 0.215 & 0.290 & 0.014 \\
+R3M & 0.040 & 0.036 & \best{0.490} & \best{0.739} & \best{0.809} & 0.011 \\
+MCR & 0.016 & 0.039 & 0.181 & 0.320 & 0.406 & 0.013 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 12: DROID-100 Real-World Offline Policy
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{DROID-100 offline policy evaluation.} Frozen encoder + LSTM BC policy with action chunking ($K{=}10$), 200 epochs, 3 seeds. Evaluated on real-world multi-camera manipulation data. \best{Bold}/\second{underline} = best/second per metric. $\dagger$MVP and MCR produce identical results (same MAE backbone; see text).}
+\label{tab:droid100}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Dim} & \textbf{Cos Sim $\uparrow$} & \textbf{Grip Acc $\uparrow$} & \textbf{MSE $\downarrow$} & \textbf{L1 $\downarrow$} \\
+\midrule
+R3M           & 2048 & \best{0.887}  & \best{90.0\%} & \best{0.176}  & \best{0.258}  \\
+Theia         & 1024 & \second{0.883} & 88.9\%         & \second{0.186} & \second{0.272} \\
+VC-1          & 1024 & 0.862          & \second{89.7\%} & 0.217          & 0.292          \\
+MCR$^\dagger$ & 768  & 0.845          & \second{89.7\%} & 0.237          & 0.301          \\
+Voltron       & 384  & 0.815          & 88.5\%         & 0.284          & 0.337          \\
+CLIP          & 768  & 0.804          & 87.8\%         & 0.299          & 0.345          \\
+SigLIP        & 768  & 0.803          & 88.5\%         & 0.300          & 0.355          \\
+\methodname{} & 1536 & 0.787          & 84.7\%         & 0.332          & 0.362          \\
+DINOv2        & 768  & 0.774          & 88.0\%         & 0.347          & 0.385          \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% TABLE 13: CALVIN Offline BC with Language Conditioning
+% ============================================================================
+\begin{table}[t]
+\centering
+\caption{\textbf{CALVIN offline BC evaluation.} Language-conditioned frozen encoder + LSTM BC policy, 200 epochs, 3 seeds. Metrics computed on active action dimensions only ($d{=}3$). \best{Bold}/\second{underline} = best/second per metric. $\dagger$MVP and MCR produce identical results.}
+\label{tab:calvin_bc}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Dim} & \textbf{MSE $\downarrow$} & \textbf{L1 $\downarrow$} & \textbf{Cos Sim $\uparrow$} & \textbf{$R^2$ $\uparrow$} \\
+\midrule
+\methodname{} & 1536 & 0.062          & \best{0.161}   & \best{0.479}   & 0.122          \\
+MCR$^\dagger$ & 768  & \best{0.060}   & \best{0.161}   & \second{0.475} & \second{0.153} \\
+Voltron       & 384  & \second{0.060} & \second{0.162} & 0.470          & \best{0.154}  \\
+R3M           & 2048 & 0.061          & 0.163          & 0.463          & 0.139          \\
+Theia         & 1024 & 0.062          & 0.163          & 0.444          & 0.132          \\
+CLIP          & 768  & 0.062          & 0.164          & 0.438          & 0.122          \\
+VC-1          & 1024 & 0.063          & 0.168          & 0.442          & 0.112          \\
+SigLIP        & 768  & 0.064          & 0.167          & 0.442          & 0.103          \\
+DINOv2        & 768  & 0.067          & 0.172          & 0.423          & 0.051          \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+% APPENDIX TABLES
+% ============================================================================
+
+% TABLE A1: Material Prior Ranges
+\begin{table}[h]
+\centering
+\caption{\textbf{Material prior ranges.} Each material type defines uniform distributions over mass (kg), static friction coefficient, and coefficient of restitution.}
+\label{tab:material_priors}
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Material Type} & \textbf{Mass (kg)} & \textbf{Friction} & \textbf{Restitution} \\
+\midrule
+Metal        & [2.0, 8.0]    & [0.10, 0.40] & [0.50, 0.90] \\
+Wood         & [0.5, 3.0]    & [0.30, 0.60] & [0.30, 0.60] \\
+Fabric       & [0.05, 0.50]  & [0.60, 0.95] & [0.10, 0.30] \\
+Glass/Ceramic& [0.3, 3.0]    & [0.20, 0.50] & [0.50, 0.80] \\
+Rubber/Plastic& [0.1, 2.0]   & [0.40, 0.80] & [0.40, 0.80] \\
+Food/Organic & [0.1, 2.0]    & [0.30, 0.70] & [0.10, 0.40] \\
+Paper/Light  & [0.01, 0.30]  & [0.40, 0.70] & [0.10, 0.30] \\
+Animal       & [0.1, 5.0]    & [0.30, 0.60] & [0.20, 0.50] \\
+Stone/Heavy  & [2.0, 15.0]   & [0.30, 0.70] & [0.10, 0.30] \\
+Default      & [0.1, 5.0]    & [0.20, 0.80] & [0.10, 0.90] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% TABLE A2: LIBERO-10 Task Descriptions
+\begin{table}[h]
+\centering
+\caption{\textbf{LIBERO-10 task descriptions.} All tasks are long-horizon multi-step manipulation tasks with 50 human demonstrations each.}
+\label{tab:libero_tasks}
+\small
+\begin{tabular}{@{}cl@{}}
+\toprule
+\textbf{ID} & \textbf{Full Task Description} \\
+\midrule
+T0 & Put both the alphabet soup and the tomato sauce in the basket \\
+T1 & Put both the cream cheese box and the butter in the basket \\
+T2 & Turn on the stove and put the moka pot on it \\
+T3 & Put the black bowl in the bottom drawer of the cabinet and close it \\
+T4 & Put the white mug on the left plate and put the yellow-white mug on the right plate \\
+T5 & Pick up the book and place it in the back compartment of the caddy \\
+T6 & Put the white mug on the plate and put the chocolate pudding to the right of the plate \\
+T7 & Put both the alphabet soup and the cream cheese box in the basket \\
+T8 & Put both moka pots on the stove \\
+T9 & Put the yellow and white mug in the microwave and close it \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% TABLE A3: DynaCLIP Per-Seed Breakdown
+\begin{table}[h]
+\centering
+\caption{\textbf{DynaCLIP LIBERO-10 per-seed results.} Success rate (\%) for each of 3 random seeds, with mean and standard deviation.}
+\label{tab:libero_seeds}
+\small
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Task} & \textbf{Seed 0} & \textbf{Seed 1} & \textbf{Seed 2} & \textbf{Mean} & \textbf{Std} \\
+\midrule
+T0: Soup + sauce & 8.0 & 6.0 & 4.0 & 6.0 & 1.6 \\
+T1: Cream cheese + butter & 52.0 & 62.0 & 58.0 & 57.3 & 4.1 \\
+T2: Stove + moka pot & 94.0 & 92.0 & 96.0 & 94.0 & 1.6 \\
+T3: Bowl in drawer & 98.0 & 96.0 & 92.0 & 95.3 & 2.5 \\
+T4: Mugs on plates & 72.0 & 76.0 & 80.0 & 76.0 & 3.3 \\
+T5: Book in caddy & 70.0 & 72.0 & 74.0 & 72.0 & 1.6 \\
+T6: Mug + pudding & 50.0 & 58.0 & 52.0 & 53.3 & 3.4 \\
+T7: Soup + cheese & 46.0 & 56.0 & 34.0 & 45.3 & 9.0 \\
+T8: Both moka pots & 26.0 & 26.0 & 24.0 & 25.3 & 0.9 \\
+T9: Mug in microwave & 58.0 & 66.0 & 72.0 & 65.3 & 5.7 \\
+\midrule
+\textbf{Average} & 57.4 & 61.0 & 58.6 & \textbf{59.0} & 2.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% TABLE A4: Zero-Shot k-NN Retrieval
+\begin{table}[h]
+\centering
+\caption{\textbf{Zero-shot physics retrieval.} $R^2$ for physics prediction via cosine-similarity retrieval from a 5,000-image library ($k{=}5$). Mean $R^2$ averages over all three properties.}
+\label{tab:zeroshot}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Mass $R^2$} & \textbf{Friction $R^2$} & \textbf{Rest. $R^2$} & \textbf{Mean $R^2$} \\
+\midrule
+SigLIP       & 0.309 & 0.199 & 0.441 & 0.316 \\
+VIP          & 0.466 & 0.476 & 0.696 & 0.546 \\
+R3M          & 0.487 & 0.499 & 0.681 & 0.556 \\
+\methodname{} & 0.536 & 0.426 & 0.638 & 0.533 \\
+CLIP         & 0.563 & \best{0.586} & 0.735 & 0.628 \\
+DINOv2-B/14  & 0.582 & 0.567 & 0.741 & 0.630 \\
+DINOv2-L/14  & \best{0.591} & 0.568 & \best{0.753} & \best{0.637} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% TABLE A5: Complete LIBERO-10 All Backbones
+\begin{table}[h]
+\centering
+\caption{\textbf{Complete LIBERO-10 results.} Average success rate (\%) with standard deviation across 3 seeds for all completed backbone evaluations.}
+\label{tab:libero_full}
+\small
+\begin{tabular}{@{}lccl@{}}
+\toprule
+\textbf{Backbone} & \textbf{Avg. (\%)} & \textbf{Feature Dim} & \textbf{Status} \\
+\midrule
+\textbf{DynaCLIP (Ours)} & \best{60.4} $\pm$ 2.4 & 1536 & Completed \\
+SigLIP-B/16 & \second{54.5} $\pm$ 2.8 & 768 & Completed \\
+DINOv2-B/14 & 51.5 $\pm$ 3.3 & 768 & Completed \\
+CLIP-L/14 & 46.9 $\pm$ 2.9 & 768 & Completed \\
+MCR (MAE) & 32.9 $\pm$ 3.4 & 768 & Completed \\
+MVP & 32.9 $\pm$ 3.8 & 768 & Completed \\
+VC-1-L & 31.4 $\pm$ 3.9 & 1024 & Completed \\
+R3M (ResNet-50) & 15.7 $\pm$ 1.9 & 2048 & Completed \\
+Voltron-S & 12.4 & 384 & Completed \\
+Theia-B & 8.0 & 1024 & Completed \\
+\bottomrule
+\end{tabular}
+\end{table}

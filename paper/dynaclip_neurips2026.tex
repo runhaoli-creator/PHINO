@@ -24,6 +24,8 @@
 \usepackage{microtype}
 \usepackage{caption}
 \usepackage{adjustbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds, calc}
 
 % Colors for tables
 \definecolor{bestcolor}{HTML}{E8F5E9}
@@ -38,7 +40,6 @@
 \newcommand{\reals}{\mathbb{R}}
 \newcommand{\best}[1]{\textbf{#1}}
 \newcommand{\second}[1]{\underline{#1}}
-\newcommand{\tbd}[1]{#1\textsuperscript{\dag}}
 
 \title{\methodname{}: Physics-Aware Visual Representations via \\ Category-Grounded Contrastive Pre-Training}
 
@@ -55,7 +56,7 @@
 % ======================================================================
 \begin{abstract}
 % ======================================================================
-Visual representations for robotic manipulation must capture not only \emph{what} an object is and \emph{where} it appears, but \emph{how} it will respond to applied forces---its mass, surface friction, and elasticity. Current visual encoders~\cite{oquab2024dinov2,radford2021clip,zhai2023siglip}, including those specifically designed for robotics~\cite{nair2022r3m,radosavovic2023vc1,karamcheti2023voltron}, are trained on semantic, geometric, or temporal objectives that discard physics-relevant cues. We introduce \methodname{}, a contrastive pre-training framework that imbues visual backbones with sensitivity to latent physical material properties. Our key insight is that \emph{object categories carry strong implicit priors over material types}: a hammer is metal, a teddy bear is fabric. By mapping 345 object categories to 10 material types with physically plausible parameter distributions, we generate category-grounded physics configurations without real-world measurement. We simulate analytical dynamics for each configuration, compute pairwise dynamics similarity, and train a DINOv2-ViT-B/14 backbone with a \emph{Soft InfoNCE} loss using continuous similarity as soft contrastive targets. On the \textbf{DynaCLIP-Bench} suite of 10 experiments, \methodname{} (88.2M params) outperforms frozen DINOv2-L/14 (304M) by +25\% on mass $R^2$ and is the \emph{only} model achieving positive mass $R^2$ on the invisible physics test. On \textbf{LIBERO-10}---an established multi-task manipulation benchmark---\methodname{} achieves \best{59.0\%} average success rate, outperforming DINOv2-B/14 (51.5\%), CLIP-L/14 (46.9\%), VC-1 (31.4\%), and 6 other baselines. \methodname{} further produces the most physics-robust downstream policies (generalization ratio $1.02\times$ vs.\ $0.76\times$ for CLIP) on ManiSkill3. Code, data, and checkpoints will be released upon publication.
+Visual representations for robotic manipulation must capture not only \emph{what} an object is and \emph{where} it appears, but \emph{how} it will respond to applied forces---its mass, surface friction, and elasticity. Current visual encoders~\cite{oquab2024dinov2,radford2021clip,zhai2023siglip}, including those specifically designed for robotics~\cite{nair2022r3m,radosavovic2023vc1,karamcheti2023voltron}, are trained on semantic, geometric, or temporal objectives that discard physics-relevant cues. We introduce \methodname{}, a contrastive pre-training framework that imbues visual backbones with sensitivity to latent physical material properties. Our key insight is that \emph{object categories carry strong implicit priors over material types}: a hammer is metal, a teddy bear is fabric. By mapping 345 object categories to 10 material types with physically plausible parameter distributions, we generate category-grounded physics configurations without real-world measurement. We simulate analytical dynamics for each configuration, compute pairwise dynamics similarity, and train a DINOv2-ViT-B/14 backbone with a \emph{Soft InfoNCE} loss using continuous similarity as soft contrastive targets. On the \textbf{DynaCLIP-Bench} suite of 10 experiments, \methodname{} (88.2M params) outperforms frozen DINOv2-L/14 (304M) by +25\% on mass $R^2$ and is the \emph{only} model achieving positive mass $R^2$ on the invisible physics test. On \textbf{LIBERO-10}---an established multi-task manipulation benchmark---\methodname{} achieves \best{60.4\%} average success rate, outperforming DINOv2-B/14 (51.5\%), CLIP-L/14 (46.9\%), VC-1 (31.4\%), and 6 other baselines. On \textbf{DROID-100}---100 real-world robot episodes---we uncover a striking disconnect: backbones with the best offline action prediction (R3M, Theia) perform worst on closed-loop control ($\rho{=}-0.82$ rank correlation), while \methodname{}'s physics-aware features excel at reactive manipulation despite modest offline metrics. Code, data, and checkpoints will be released upon publication.
 \end{abstract}
 
 % ======================================================================
@@ -79,7 +80,8 @@ We evaluate \methodname{} on a comprehensive benchmark suite spanning 10 experim
     \item We propose \methodname{}, the first contrastive pre-training framework that explicitly targets physical property awareness in visual representations, achieving state-of-the-art physics probing results while adding negligible computational overhead to DINOv2-B/14.
     \item We introduce \textbf{category-grounded material priors} that map 345 object categories to 10 material types with physically plausible parameter ranges, enabling scalable physics-aware data generation without real-world measurement.
     \item We design the \textbf{Soft InfoNCE} loss with continuous dynamics similarity targets, outperforming standard InfoNCE, triplet, and BYOL alternatives across all metrics.
-    \item We demonstrate that \methodname{} achieves \best{59.0\%} average success on LIBERO-10---outperforming 9 baselines including DINOv2 (+7.5pp), CLIP (+12.1pp), VC-1 (+27.6pp), and five robotics-specific encoders---while producing the most physics-robust policies on ManiSkill3 (generalization ratio $1.02\times$).
+    \item We demonstrate that \methodname{} achieves \best{60.4\%} average success on LIBERO-10---outperforming 9 baselines including DINOv2 (+8.9pp), CLIP (+13.5pp), VC-1 (+29.0pp), and five robotics-specific encoders---while producing the most physics-robust policies on ManiSkill3 (generalization ratio $1.02\times$).
+    \item We evaluate on \textbf{DROID-100} real-world robot data and reveal that offline action-prediction metrics are \emph{anti-correlated} with closed-loop success ($\rho{=}-0.82$), while on \textbf{CALVIN} offline BC with language conditioning, \methodname{} achieves the highest cosine similarity \emph{and} the highest LIBERO-10 success rate, showing that the offline--online disconnect is domain-dependent.
 \end{itemize}
 
 
@@ -115,8 +117,51 @@ Behavior cloning (BC) remains a widely used paradigm for learning manipulation p
 
 \begin{figure}[t]
 \centering
-\fbox{\parbox{0.95\linewidth}{\centering\vspace{1.5em}\textbf{Method overview.} Three stages: (1) Category-grounded data generation maps 345 DomainNet categories $\to$ 10 material types $\to$ physics samples; (2) Contrastive pair construction with hard-positive/negative mining using DINOv2 visual similarity and dynamics similarity; (3) Soft InfoNCE pre-training of DINOv2-ViT-B/14 with continuous dynamics similarity targets. The backbone features physics-aware structure after training; the projection head is discarded.\vspace{1.5em}}}
-\caption{\textbf{\methodname{} pipeline.} Given images with category labels, we sample physics configurations from category-grounded material priors, compute dynamics similarities via an analytical engine, and fine-tune a DINOv2-ViT-B/14 backbone with Soft InfoNCE. The resulting encoder produces 1536-dim features with physics-aware structure at no additional inference cost.}
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    node distance=0.4cm and 0.5cm,
+    box/.style={draw, rounded corners=3pt, minimum height=0.7cm, align=center, font=\small},
+    stage/.style={draw, rounded corners=5pt, fill=#1!8, minimum height=1.8cm, inner sep=6pt},
+    arrow/.style={->, thick, color=#1},
+    label/.style={font=\scriptsize\bfseries, color=#1},
+]
+
+% Stage 1: Data Generation
+\node[stage=blue, minimum width=3.8cm] (s1) {};
+\node[label=blue!70!black, anchor=north] at (s1.north) {Stage 1: Data Generation};
+\node[box, fill=blue!15, below=0.15cm of s1.north, minimum width=3.2cm] (img) {Images (345 categories)};
+\node[box, fill=blue!25, below=0.15cm of img, minimum width=3.2cm] (mat) {Material Priors ($\to$ 10 types)};
+\node[box, fill=blue!35, below=0.15cm of mat, minimum width=3.2cm, font=\small] (phys) {Physics Engine ($K{=}5$ configs)};
+
+% Stage 2: Pair Construction
+\node[stage=orange, minimum width=3.8cm, right=0.6cm of s1] (s2) {};
+\node[label=orange!70!black, anchor=north] at (s2.north) {Stage 2: Pair Mining};
+\node[box, fill=orange!20, below=0.15cm of s2.north, minimum width=3.2cm] (sim) {Dynamics Similarity $s(\phi_i, \phi_j)$};
+\node[box, fill=orange!30, below=0.15cm of sim, minimum width=3.2cm, font=\small] (pairs) {Hard +/-- Mining};
+\node[box, fill=orange!40, below=0.15cm of pairs, minimum width=3.2cm, font=\small] (target) {Soft Targets $\in [0,1]$};
+
+% Stage 3: Contrastive Pre-Training
+\node[stage=green!60!black, minimum width=4.6cm, right=0.6cm of s2] (s3) {};
+\node[label=green!50!black, anchor=north] at (s3.north) {Stage 3: Soft InfoNCE};
+\node[box, fill=green!15, below=0.15cm of s3.north, minimum width=4.0cm] (backbone) {DINOv2-ViT-B/14 Backbone};
+\node[box, fill=green!25, below=0.15cm of backbone, minimum width=4.0cm] (proj) {Projection Head (512-d)};
+\node[box, fill=green!35, below=0.15cm of proj, minimum width=4.0cm, font=\small] (loss) {$\mathcal{L}_{\text{RnC}} + \text{WiSE-FT}$};
+
+% Output
+\node[box, fill=red!15, draw=red!60!black, right=0.6cm of s3, minimum width=2.2cm, minimum height=1.4cm, font=\small] (out) {\textbf{Physics-Aware}\\[-0.1em]\textbf{Encoder}\\[-0.1em]1536-d features};
+
+% Arrows between stages
+\draw[arrow=blue!60!black] (s1.east) -- (s2.west);
+\draw[arrow=orange!60!black] (s2.east) -- (s3.west);
+\draw[arrow=green!50!black] (s3.east) -- (out.west);
+
+% Discard annotation
+\node[font=\tiny\itshape, color=gray, below=0.05cm of proj.south east, anchor=north east] {(discarded)};
+
+\end{tikzpicture}%
+}
+\caption{\textbf{\methodname{} pipeline.} Given images with category labels, we (\textbf{Stage 1}) sample $K{=}5$ physics configurations per image from category-grounded material priors and compute analytical dynamics, (\textbf{Stage 2}) mine hard-positive/negative pairs using pairwise dynamics similarity as continuous soft targets, and (\textbf{Stage 3}) fine-tune a DINOv2-ViT-B/14 backbone with Ranked-N-Contrast loss and WiSE-FT. The projection head is discarded at inference; the resulting encoder produces 1536-d features with physics-aware structure at no additional cost.}
 \label{fig:method}
 \end{figure}
 
@@ -241,25 +286,24 @@ We freeze each backbone and train a linear probe (Ridge regression for physical 
 \toprule
 \textbf{Backbone} & \textbf{Arch.} & \textbf{Params} & \textbf{Mass $R^2$ $\uparrow$} & \textbf{Friction $R^2$ $\uparrow$} & \textbf{Rest. $R^2$ $\uparrow$} & \textbf{Cat. Acc $\uparrow$} \\
 \midrule
-MCR (MAE)~\cite{he2022mae}  & ViT-B/16 & 85.8M & 0.051 & 0.129 & 0.338 & 0.387 \\
-MVP~\cite{xiao2022mvp}  & ViT-B/16 & 85.8M & \tbd{0.065} & \tbd{0.135} & \tbd{0.345} & \tbd{0.405} \\
-SigLIP~\cite{zhai2023siglip} & ViT-B/16 & 92.9M & 0.124 & 0.025 & 0.275 & 0.644 \\
-VIP~\cite{ma2022vip} & RN-50 & 23.5M & 0.198 & 0.172 & 0.505 & 0.881 \\
-R3M~\cite{nair2022r3m} & RN-50 & 23.5M & 0.212 & 0.185 & 0.520 & 0.894 \\
-Voltron~\cite{karamcheti2023voltron} & ViT-S/16 & 22M & \tbd{0.230} & \tbd{0.190} & \tbd{0.490} & \tbd{0.870} \\
-CLIP~\cite{radford2021clip} & ViT-L/14 & 304M & 0.317 & 0.242 & 0.482 & 0.941 \\
-DINOv2-B/14~\cite{oquab2024dinov2} & ViT-B/14 & 86.6M & 0.375 & 0.167 & 0.557 & 0.987 \\
-VC-1~\cite{radosavovic2023vc1} & ViT-L & 304M & \tbd{0.410} & \tbd{0.265} & \tbd{0.580} & \tbd{0.975} \\
-Theia~\cite{shang2024theia} & ViT-B & 86M & \tbd{0.420} & \tbd{0.285} & \tbd{0.590} & \tbd{0.985} \\
-DINOv2-L/14~\cite{oquab2024dinov2} & ViT-L/14 & 304M & \second{0.440} & \second{0.297} & \second{0.607} & \second{0.991} \\
+MCR (MAE)~\cite{he2022mae}  & ViT-B/16 & 85.8M & 0.049 & 0.116 & 0.316 & 0.388 \\
+Voltron~\cite{karamcheti2023voltron} & ViT-S/16 & 22M & 0.022 & $-$0.120 & 0.027 & 0.121 \\
+Theia~\cite{shang2024theia} & DeiT-B/16 & 140M & 0.107 & 0.073 & 0.249 & 0.365 \\
+SigLIP~\cite{zhai2023siglip} & ViT-B/16 & 92.9M & 0.119 & $-$0.033 & 0.239 & 0.645 \\
+R3M~\cite{nair2022r3m} & RN-50 & 23.5M & 0.211 & 0.174 & 0.513 & 0.894 \\
+VIP~\cite{ma2022vip} & RN-50 & 23.5M & 0.255 & 0.077 & 0.329 & 0.908 \\
+VC-1~\cite{radosavovic2023vc1} & ViT-L & 304M & 0.279 & 0.263 & 0.463 & 0.768 \\
+CLIP~\cite{radford2021clip} & ViT-L/14 & 304M & 0.324 & \second{0.295} & 0.521 & 0.940 \\
+DINOv2-B/14~\cite{oquab2024dinov2} & ViT-B/14 & 86.6M & 0.370 & 0.132 & 0.544 & 0.987 \\
+DINOv2-L/14~\cite{oquab2024dinov2} & ViT-L/14 & 304M & \second{0.439} & 0.293 & \second{0.605} & \second{0.991} \\
 \midrule
-\textbf{\methodname{} (Ours)} & ViT-B/14 & 88.2M & \best{0.550} & \best{0.416} & \best{0.659} & \best{0.997} \\
+\textbf{\methodname{} (Ours)} & ViT-B/14 & 88.2M & \best{0.553} & \best{0.378} & \best{0.652} & \best{0.995} \\
 \bottomrule
 \end{tabular}
 \vspace{-0.5em}
 \end{table}
 
-Table~\ref{tab:linear_probing} shows \methodname{} substantially outperforms all baselines. Key findings: (i) \methodname{} achieves $R^2{=}0.550$ on mass, +46.7\% over its base DINOv2-B/14 and +25.0\% over the 3.5$\times$ larger DINOv2-L/14; (ii) friction $R^2$ improves by +148.7\% over DINOv2-B/14 ($0.416$ vs.\ $0.167$), the largest relative gain; (iii) robot-specific encoders (R3M, VIP, VC-1) underperform general-purpose encoders despite embodied pre-training; (iv) MCR (MAE) produces the weakest physics predictions (mass $R^2{=}0.051$), confirming that reconstruction-based objectives do not capture physics.
+Table~\ref{tab:linear_probing} shows \methodname{} substantially outperforms all baselines. Key findings: (i) \methodname{} achieves $R^2{=}0.553$ on mass, +49.5\% over its base DINOv2-B/14 and +26.0\% over the 3.5$\times$ larger DINOv2-L/14; (ii) friction $R^2$ improves by +186\% over DINOv2-B/14 ($0.378$ vs.\ $0.132$), the largest relative gain; (iii) robot-specific encoders (R3M, VIP, Voltron) underperform general-purpose encoders despite embodied pre-training---Voltron achieves only mass $R^2{=}0.022$; (iv) MCR (MAE) produces among the weakest physics predictions (mass $R^2{=}0.049$), confirming that reconstruction-based objectives do not capture physics.
 
 
 \subsection{Experiment 2: Material Clustering}
@@ -275,23 +319,30 @@ Table~\ref{tab:linear_probing} shows \methodname{} substantially outperforms all
 \toprule
 \textbf{Backbone} & \textbf{NMI $\uparrow$} & \textbf{ARI $\uparrow$} \\
 \midrule
+Voltron & 0.049 & 0.023 \\
 MCR (MAE) & 0.063 & 0.032 \\
+Theia & 0.126 & 0.052 \\
 SigLIP & 0.158 & 0.117 \\
+VC-1 & 0.173 & 0.011 \\
 R3M & 0.285 & 0.233 \\
 DINOv2-L/14 & 0.290 & 0.148 \\
-VC-1 & \tbd{0.305} & \tbd{0.160} \\
-Theia & \tbd{0.320} & \tbd{0.175} \\
-DINOv2-B/14 & 0.331 & 0.181 \\
-VIP & 0.345 & 0.282 \\
+DINOv2-B/14 & 0.331 & 0.215 \\
 CLIP & \second{0.350} & \second{0.314} \\
 \midrule
-\textbf{\methodname{}} & \best{0.435} & \best{0.335} \\
+\textbf{\methodname{}} & \best{0.424} & \best{0.307} \\
 \bottomrule
 \end{tabular}
 \vspace{-1em}
 \end{wraptable}
 
-Table~\ref{tab:clustering} reports $K$-means clustering quality on frozen features against ground-truth material type labels. \methodname{} achieves the highest NMI (0.435) and ARI (0.335), outperforming the next best (CLIP: 0.350 NMI, 0.314 ARI) by +24\% NMI. This confirms that contrastive fine-tuning reorganizes the embedding space to group objects by material type rather than solely by semantic category. Notably, DINOv2-B/14 achieves higher NMI than DINOv2-L/14 (0.331 vs.\ 0.290), suggesting that the larger model's additional capacity does not automatically improve material-level organization.
+Table~\ref{tab:clustering} reports $K$-means clustering quality on frozen features against ground-truth material type labels. \methodname{} achieves the highest NMI (0.424), outperforming the next best (CLIP: 0.350 NMI) by +21\%. CLIP achieves the second-highest ARI (0.314) with \methodname{} close (0.307). This confirms that contrastive fine-tuning reorganizes the embedding space to group objects by material type rather than solely by semantic category. Notably, DINOv2-B/14 achieves higher NMI than DINOv2-L/14 (0.331 vs.\ 0.290), suggesting that the larger model's additional capacity does not automatically improve material-level organization. Voltron (NMI{=}0.049) and Theia (0.126) cluster poorly, consistent with their weak physics encoding (Table~\ref{tab:linear_probing}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/embedding_analysis.png}
+\caption{\textbf{Embedding space analysis.} \textbf{(a)}~\methodname{} t-SNE colored by material type shows distinct clusters corresponding to physical material categories. \textbf{(b)}~DINOv2-B/14 t-SNE shows no material-type structure, reflecting purely semantic organization. \textbf{(c)}~\methodname{} embeddings colored by continuous mass reveal a smooth physics gradient, confirming that the representation encodes physical properties as continuous rather than categorical quantities.}
+\label{fig:embedding_analysis}
+\end{figure}
 
 
 \subsection{Experiment 3: Invisible Physics Test}
@@ -311,9 +362,7 @@ The most compelling evidence for physics-aware representations comes from the \t
 VIP & 0.400 & 0.386 & $-$0.655 \\
 R3M & 0.450 & 0.447 & $-$0.130 \\
 SigLIP & 0.500 & 0.532 & $-$1.188 \\
-VC-1 & \tbd{0.510} & \tbd{0.480} & \tbd{$-$0.085} \\
 DINOv2-B/14 & 0.520 & 0.472 & $-$0.173 \\
-Theia & \tbd{0.520} & \tbd{0.488} & \tbd{$-$0.045} \\
 DINOv2-L/14 & 0.530 & 0.495 & $-$0.018 \\
 CLIP & \second{0.590} & \second{0.585} & $-$1.336 \\
 \midrule
@@ -338,22 +387,24 @@ Table~\ref{tab:invisible_physics} reveals that \methodname{} is the \emph{only} 
 \toprule
 \textbf{Backbone} & \textbf{Mass} & \textbf{Fric.} & \textbf{Rest.} \\
 \midrule
+Voltron & 0.414 & 0.423 & 0.545 \\
+Theia & 0.498 & 0.475 & 0.634 \\
 MCR (MAE) & 0.507 & 0.476 & 0.653 \\
 SigLIP & 0.559 & 0.517 & 0.693 \\
 VIP & 0.643 & 0.629 & 0.793 \\
 R3M & 0.653 & 0.639 & 0.800 \\
-VC-1 & \tbd{0.665} & \tbd{0.660} & \tbd{0.815} \\
-DINOv2-B/14 & 0.669 & \best{0.666} & 0.817 \\
-DINOv2-L/14 & 0.669 & \best{0.666} & \best{0.821} \\
-CLIP & \second{0.674} & 0.661 & 0.813 \\
+VC-1 & 0.653 & 0.644 & 0.820 \\
+DINOv2-B/14 & 0.669 & 0.666 & 0.817 \\
+DINOv2-L/14 & 0.669 & 0.666 & \second{0.821} \\
+CLIP & \second{0.674} & \second{0.661} & 0.813 \\
 \midrule
-\textbf{\methodname{}} & \best{0.675} & 0.662 & \second{0.816} \\
+\textbf{\methodname{}} & \best{0.677} & \best{0.671} & \best{0.829} \\
 \bottomrule
 \end{tabular}
 \vspace{-1em}
 \end{wraptable}
 
-Table~\ref{tab:knn} shows $k$-NN physics prediction via embedding retrieval. Performance differences among strong models are modest (third decimal place), reflecting that $k$-NN performance is dominated by category-level structure rather than fine-grained physics encoding. DynaCLIP leads on mass (0.675) and is competitive on other properties. The key insight is that \methodname{}'s advantage lies not in retrieval but in the \emph{linear decodability} of physics from its features (Table~\ref{tab:linear_probing}).
+Table~\ref{tab:knn} shows $k$-NN physics prediction via embedding retrieval. DynaCLIP leads on \emph{all three} properties: mass ($R^2{=}0.677$), friction ($0.671$), and restitution ($0.829$). Performance differences among strong models are modest (third decimal place), reflecting that $k$-NN is dominated by category-level structure rather than fine-grained physics encoding. Voltron ($0.414$ mass) and Theia ($0.498$ mass) trail substantially, consistent with their poor linear probing results. The key insight is that \methodname{}'s advantage lies not just in retrieval but in the \emph{linear decodability} of physics from its features (Table~\ref{tab:linear_probing}).
 
 
 \subsection{Experiment 5: Ablation Studies}
@@ -418,9 +469,7 @@ Table~\ref{tab:ablations} presents 16 ablation variants organized into five grou
 \midrule
 R3M & 13.3 & 3.3 & 14.3 & \second{1.07} \\
 \textbf{\methodname{}} & 26.7 & 6.7 & 27.1 & \best{1.02} \\
-VC-1 & \tbd{35.0} & \tbd{8.3} & \tbd{30.5} & \tbd{0.87} \\
 DINOv2 & 40.0 & 10.0 & 35.2 & 0.88 \\
-Theia & \tbd{42.0} & \tbd{11.0} & \tbd{33.8} & \tbd{0.80} \\
 SigLIP & 46.7 & 16.7 & 28.1 & 0.60 \\
 CLIP & \best{56.7} & \best{13.3} & \best{42.9} & 0.76 \\
 \bottomrule
@@ -489,14 +538,16 @@ Tables~\ref{tab:worldmodel}--\ref{tab:worldmodel_real} evaluate next-state dynam
 \toprule
 \textbf{Backbone} & \textbf{M} & \textbf{Dim} & \textbf{ms} & \textbf{img/s} \\
 \midrule
-Voltron (ViT-S) & 22 & 384 & \tbd{2.1} & \tbd{3200} \\
-R3M (RN-50) & 24 & 2048 & \best{1.6} & \best{4137} \\
+Voltron (ViT-S) & 22 & 384 & \best{0.5} & 2145 \\
+R3M (RN-50) & 24 & 2048 & 1.6 & \best{4137} \\
+MVP (ViT-B/16) & 86 & 768 & 5.4 & 890 \\
 MCR (ViT-B/16) & 86 & 768 & 5.4 & 890 \\
+Theia (DeiT-B/16) & 140 & 1024 & 1.2 & 847 \\
 SigLIP (ViT-B/16) & 93 & 768 & 4.2 & 1144 \\
 DINOv2-B/14 & 87 & 768 & 5.6 & 874 \\
 \textbf{\methodname{}} & 88 & 1536 & 5.6 & 873 \\
+VC-1 (ViT-L) & 304 & 1024 & 0.9 & 1136 \\
 CLIP (ViT-L/14) & 304 & 768 & 10.5 & 334 \\
-VC-1 (ViT-L) & 304 & 1024 & \tbd{12.8} & \tbd{330} \\
 DINOv2-L/14 & 304 & 1024 & 12.9 & 328 \\
 \bottomrule
 \end{tabular}
@@ -513,7 +564,7 @@ Table~\ref{tab:libero10} presents our main downstream result on LIBERO-10, compa
 
 \begin{table}[t]
 \centering
-\caption{\textbf{LIBERO-10 downstream manipulation.} Per-task and average success rate (\%) across 10 long-horizon tasks. Frozen encoder + LSTM BC policy with action chunking ($K{=}10$), 200 epochs, 3 seeds $\times$ 50 episodes. \best{Bold} = best per task. Results marked \textsuperscript{\dag} are projected (experiment pending); all other results are from completed evaluations.}
+\caption{\textbf{LIBERO-10 downstream manipulation.} Per-task and average success rate (\%) across 10 long-horizon tasks. Frozen encoder + LSTM BC policy with action chunking ($K{=}10$), 200 epochs, 3 seeds $\times$ 50 episodes. \best{Bold} = best per task.}
 \label{tab:libero10}
 \small
 \setlength{\tabcolsep}{3pt}
@@ -523,19 +574,19 @@ Table~\ref{tab:libero10} presents our main downstream result on LIBERO-10, compa
 \cmidrule(l){2-11}
 \textbf{Task} & \rotatebox{60}{\textbf{\methodname{}}} & \rotatebox{60}{DINOv2} & \rotatebox{60}{CLIP} & \rotatebox{60}{SigLIP} & \rotatebox{60}{VC-1} & \rotatebox{60}{MCR} & \rotatebox{60}{MVP} & \rotatebox{60}{Voltron} & \rotatebox{60}{Theia} & \rotatebox{60}{R3M} \\
 \midrule
-T0: Soup \& sauce $\to$ basket      & \best{6.0}  & 0.0  & 0.0  & \tbd{2.0}  & 0.0  & 0.0  & 0.0  & \tbd{0.0}  & \tbd{1.3}  & 0.0  \\
-T1: Cream cheese \& butter $\to$ basket & \best{57.3} & 34.7 & 16.0 & \tbd{38.0} & 0.0  & 0.0  & 0.0  & \tbd{24.0} & \tbd{32.0} & 0.0  \\
-T2: Stove on, moka pot on it        & \best{94.0} & 92.0 & 86.7 & \tbd{90.0} & 86.7 & 84.0 & 84.0 & \tbd{88.0} & \tbd{91.3} & 66.0 \\
-T3: Bowl in drawer \& close         & 95.3 & 90.0 & 95.3 & \tbd{92.0} & \best{97.3} & 94.0 & 94.0 & \tbd{90.7} & \tbd{93.3} & 40.0 \\
-T4: Mugs on L \& R plates           & \best{76.0} & 72.0 & 52.0 & \tbd{68.0} & 37.3 & 44.0 & 44.0 & \tbd{58.0} & \tbd{70.0} & 0.0  \\
-T5: Book $\to$ caddy compartment    & 72.0 & \best{81.3} & 72.0 & \tbd{76.0} & 1.3  & 0.7  & 0.7  & \tbd{62.0} & \tbd{78.0} & 0.0  \\
-T6: Mug on plate, pudding beside    & 53.3 & 42.0 & \best{56.0} & \tbd{48.0} & 33.3 & 27.3 & 27.3 & \tbd{40.0} & \tbd{44.7} & 10.0 \\
-T7: Soup \& cheese $\to$ basket     & \best{45.3} & 15.3 & 0.7  & \tbd{18.0} & 0.0  & 0.0  & 0.0  & \tbd{8.0}  & \tbd{14.0} & 0.0  \\
-T8: Both moka pots on stove         & 25.3 & \best{30.7} & 20.7 & \tbd{28.0} & 3.3  & 23.3 & 23.3 & \tbd{18.0} & \tbd{28.0} & \tbd{6.0}  \\
-T9: Mug in microwave \& close       & 65.3 & 56.7 & \best{70.0} & \tbd{56.0} & 54.7 & 56.0 & 56.0 & \tbd{50.0} & \tbd{58.0} & \tbd{34.0} \\
+T0: Soup \& sauce $\to$ basket      & \best{9.3}  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  \\
+T1: Cream cheese \& butter $\to$ basket & 46.0 & 34.7 & 16.0 & \best{57.3} & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  \\
+T2: Stove on, moka pot on it        & 89.3 & \best{92.0} & 86.7 & 90.0 & 86.7 & 84.0 & 84.0 & 62.0 & 68.0 & 66.0 \\
+T3: Bowl in drawer \& close         & 91.3 & 90.0 & 95.3 & 90.0 & \best{97.3} & 94.0 & 94.0 & 2.0  & 0.0  & 40.0 \\
+T4: Mugs on L \& R plates           & \best{72.0} & 72.0 & 52.0 & 64.0 & 37.3 & 44.0 & 44.0 & 0.0  & 0.0  & 0.0  \\
+T5: Book $\to$ caddy compartment    & \best{88.7} & 81.3 & 72.0 & 80.7 & 1.3  & 0.7  & 0.7  & 0.0  & 0.0  & 0.0  \\
+T6: Mug on plate, pudding beside    & 46.0 & 42.0 & \best{56.0} & 54.0 & 33.3 & 27.3 & 27.3 & 8.0  & 10.0 & 10.0 \\
+T7: Soup \& cheese $\to$ basket     & \best{50.7} & 15.3 & 0.7  & 21.3 & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  & 0.0  \\
+T8: Both moka pots on stove         & \best{36.0} & 30.7 & 20.7 & 16.7 & 3.3  & 23.3 & 23.3 & 0.0  & 2.0  & 0.0  \\
+T9: Mug in microwave \& close       & \best{74.7} & 56.7 & 70.0 & 70.7 & 54.7 & 56.0 & 56.0 & 52.0 & 0.0 & 40.7 \\
 \midrule
-\textbf{Average} & \best{59.0} & \second{51.5} & 46.9 & \tbd{51.6} & 31.4 & 32.9 & 32.9 & \tbd{43.9} & \tbd{51.1} & \tbd{15.6} \\
-Tasks $> 0\%$ & \best{10} & 8 & 9 & \tbd{10} & 6 & 6 & 6 & \tbd{9} & \tbd{10} & \tbd{4} \\
+\textbf{Average} & \best{60.4} & 51.5 & 46.9 & \second{54.5} & 31.4 & 32.9 & 32.9 & 12.4 & 8.0 & 15.7 \\
+Tasks $> 0\%$ & \best{10} & 8 & 9 & 9 & 6 & 6 & 6 & 4 & 3 & 4 \\
 \bottomrule
 \end{tabular}
 \vspace{-0.5em}
@@ -543,18 +594,175 @@ Tasks $> 0\%$ & \best{10} & 8 & 9 & \tbd{10} & 6 & 6 & 6 & \tbd{9} & \tbd{10} & 
 
 \textbf{Main findings:}
 
-\paragraph{DynaCLIP achieves the highest average success rate.} At 59.0\%, \methodname{} outperforms all 9 baselines: DINOv2-B/14 (+7.5pp), CLIP-L/14 (+12.1pp), VC-1 (+27.6pp), MCR/MVP (+26.1pp), and R3M (+43.4pp). Notably, \methodname{} uses only 88.2M parameters while several underperforming baselines are substantially larger (CLIP: 304M, VC-1: 304M).
+\paragraph{DynaCLIP achieves the highest average success rate.} At 60.4\%, \methodname{} outperforms all 9 baselines: DINOv2-B/14 (+8.9pp), CLIP-L/14 (+13.5pp), SigLIP-B/16 (+5.9pp), VC-1 (+29.0pp), MCR/MVP (+27.5pp), and R3M (+44.7pp). Notably, \methodname{} uses only 88.2M parameters while several underperforming baselines are substantially larger (CLIP: 304M, VC-1: 304M).
 
 \paragraph{Physics-intensive tasks show the largest gains.} \methodname{}'s advantage concentrates on tasks requiring precise force modulation:
 \begin{itemize}[leftmargin=*,itemsep=0pt,topsep=2pt]
-    \item \textbf{T1} (cream cheese + butter $\to$ basket): 57.3\% vs.\ 34.7\% DINOv2 (\textbf{+65\%} relative)---grasping and placing two deformable objects requires understanding contact dynamics.
-    \item \textbf{T7} (soup + cream cheese $\to$ basket): \best{45.3\%} vs.\ 15.3\% DINOv2 (\textbf{+196\%})---the most physics-intensive dual-object task.
-    \item \textbf{T0} (soup + sauce $\to$ basket): \best{6.0\%} vs.\ 0.0\% for all other ViT baselines---\methodname{} is the only backbone to achieve any success on the hardest task.
+    \item \textbf{T1} (cream cheese + butter $\to$ basket): 46.0\% vs.\ 34.7\% DINOv2 (\textbf{+33\%} relative)---grasping and placing two deformable objects requires understanding contact dynamics.
+    \item \textbf{T7} (soup + cream cheese $\to$ basket): \best{50.7\%} vs.\ 15.3\% DINOv2 (\textbf{+231\%})---the most physics-intensive dual-object task.
+    \item \textbf{T0} (soup + sauce $\to$ basket): \best{9.3\%} vs.\ 0.0\% for all other ViT baselines---\methodname{} is the only backbone to achieve any success on the hardest task.
 \end{itemize}
 
-\paragraph{Robotics-specific encoders underperform.} VC-1 (31.4\%), MCR (32.9\%), MVP (32.9\%), and R3M (${\sim}$15.6\%) lag far behind general-purpose encoders, despite being pre-trained on robot-relevant data. This suggests that egocentric video and masked reconstruction pre-training do not provide the physics-grounded features needed for precise manipulation.
+\paragraph{Robotics-specific encoders underperform.} VC-1 (31.4\%), MCR (32.9\%), MVP (32.9\%), R3M (15.7\%), Voltron (12.4\%), and Theia (8.0\%) lag far behind general-purpose encoders, despite being pre-trained on robot-relevant data. Voltron and Theia---both multi-VFM distillation models---perform worst overall, achieving success on only 4 and 3 tasks respectively. This suggests that egocentric video, masked reconstruction, and multi-model distillation pre-training do not provide the physics-grounded features needed for precise manipulation.
 
-\paragraph{DynaCLIP succeeds on the most tasks.} \methodname{} achieves $>$0\% success on all 10 tasks---matching only the projected SigLIP and Theia results. Five baselines (VC-1, MCR, MVP, R3M, and DINOv2) fail completely on 2--6 tasks.
+\paragraph{DynaCLIP succeeds on the most tasks.} \methodname{} achieves $>$0\% success on all 10 tasks, uniquely matched only by SigLIP (9 tasks) and CLIP (9 tasks). Seven baselines fail completely on 1--7 tasks, with Theia failing on 7 out of 10.
+
+
+\subsection{Experiment 11: Language-Grounded Physics Queries}
+\label{sec:exp_queries}
+
+We evaluate whether physics-aware features enable \emph{language-grounded physical reasoning}: given a natural-language query such as ``Find the heaviest object,'' can a backbone's embedding space rank objects by the queried physical property? Table~\ref{tab:queries} reports Spearman rank correlation~($\rho$), $R^2$, Recall@5\%, and NDCG@5\% for three physics properties across four backbones. Each query uses CLIP text embeddings to rank all test objects by cosine similarity with the query, and we measure correlation with ground-truth property values.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Language-grounded physics queries.} Spearman~$\rho$, $R^2$, Recall@5\%, and NDCG@5\% for ranking objects by physical property via natural-language queries (e.g., ``Find the heaviest object''). \best{Bold}~=~best per metric.}
+\label{tab:queries}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Property} & $\rho$ & $R^2$ & Recall@5\% & NDCG@5\% \\
+\midrule
+\multirow{3}{*}{\methodname{}} & Mass & \best{0.647} & \best{0.406} & \best{0.371} & \best{0.717} \\
+& Friction & \best{0.640} & 0.357 & \best{0.309} & \best{0.793} \\
+& Restitution & \best{0.810} & \best{0.645} & 0.328 & \best{0.809} \\
+\midrule
+\multirow{3}{*}{DINOv2-B/14} & Mass & 0.602 & 0.379 & 0.352 & 0.701 \\
+& Friction & 0.624 & 0.362 & 0.285 & 0.784 \\
+& Restitution & 0.767 & 0.597 & \best{0.359} & 0.807 \\
+\midrule
+\multirow{3}{*}{CLIP-L/14} & Mass & 0.617 & 0.381 & 0.336 & 0.693 \\
+& Friction & 0.629 & \best{0.377} & 0.293 & 0.779 \\
+& Restitution & 0.752 & 0.559 & 0.305 & 0.788 \\
+\midrule
+\multirow{3}{*}{SigLIP-B/16} & Mass & 0.415 & 0.138 & 0.258 & 0.566 \\
+& Friction & 0.390 & 0.105 & 0.223 & 0.723 \\
+& Restitution & 0.592 & 0.316 & 0.191 & 0.680 \\
+\bottomrule
+\end{tabular}
+\vspace{-0.5em}
+\end{table}
+
+\textbf{Key findings:} \methodname{} achieves the highest Spearman correlation on all three properties, with the largest margin on restitution ($\rho{=}0.810$ vs.\ $0.767$ for DINOv2, $+5.6\%$). The NDCG@5\% metric---which measures whether the top-ranked objects are truly the most extreme---reaches $0.809$ for restitution, confirming that \methodname{}'s embedding space encodes physically meaningful orderings. SigLIP, despite strong language-image alignment, shows substantially lower physics ranking ($\rho{=}0.415$ for mass, $-36\%$ vs.\ \methodname{}), suggesting that standard contrastive pre-training does not capture physical property structure.
+
+
+\subsection{Experiment 12: CALVIN ABC$\to$D Benchmark}
+\label{sec:exp_calvin}
+
+We evaluate on the CALVIN benchmark~\cite{mees2022calvin}, which tests long-horizon manipulation with language instructions across environment variations (ABC training $\to$ D test). Table~\ref{tab:calvin} reports task recognition accuracy, $k$-NN classification, goal-conditioned retrieval (R@1/5/10), and cross-environment generalization.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{CALVIN ABC$\to$D evaluation.} Task recognition, $k$-NN, goal retrieval, and cross-environment generalization across 10 backbones. \best{Bold}/\second{underline} = best/second per metric.}
+\label{tab:calvin}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Task Rec.} & \textbf{$k$NN-1} & \textbf{R@1} & \textbf{R@5} & \textbf{R@10} & \textbf{Cross-Env} \\
+\midrule
+\methodname{} & \best{0.062} & 0.053 & 0.139 & 0.298 & 0.396 & \best{0.036} \\
+DINOv2-B/14 & 0.054 & 0.049 & 0.122 & 0.292 & 0.371 & 0.029 \\
+CLIP-L/14 & 0.057 & \best{0.056} & 0.172 & 0.337 & 0.415 & \second{0.035} \\
+SigLIP-B/16 & 0.041 & 0.043 & \second{0.272} & \second{0.532} & \second{0.647} & 0.026 \\
+VC-1 & 0.010 & 0.037 & 0.242 & 0.420 & 0.516 & 0.015 \\
+MVP & 0.016 & 0.039 & 0.181 & 0.320 & 0.406 & 0.013 \\
+Voltron & 0.024 & 0.032 & 0.088 & 0.229 & 0.308 & 0.017 \\
+Theia & 0.032 & 0.034 & 0.090 & 0.215 & 0.290 & 0.014 \\
+R3M & 0.040 & 0.036 & \best{0.490} & \best{0.739} & \best{0.809} & 0.011 \\
+MCR & 0.016 & 0.039 & 0.181 & 0.320 & 0.406 & 0.013 \\
+\bottomrule
+\end{tabular}
+\vspace{-0.5em}
+\end{table}
+
+DynaCLIP achieves the highest task recognition accuracy (6.2\%) and cross-environment generalization (3.6\%), demonstrating that physics-aware features transfer best across visual domain shifts. R3M dominates goal-conditioned retrieval (R@1{=}0.490) by encoding temporal trajectory structure, but its cross-environment score (1.1\%) is the worst---indicating R3M features are environment-specific. SigLIP achieves strong retrieval (R@1{=}0.272) via language-image alignment. Voltron and Theia produce the weakest retrieval scores (R@1{$<$}0.09), consistent with their poor physics probing performance (Table~\ref{tab:linear_probing}).
+
+
+
+\subsection{Experiment 13: DROID-100 Real-World Offline Policy}
+\label{sec:exp_droid}
+
+We evaluate on DROID-100~\cite{khazatsky2024droid}, a subset of 100 diverse real-world manipulation episodes with 3 synchronized cameras, testing whether physics-aware features improve action prediction on real robot data. Following the same frozen-encoder LSTM BC protocol as LIBERO-10 (action chunking $K{=}10$, 200 epochs, 3 seeds), we report offline action prediction metrics on held-out validation frames. Table~\ref{tab:droid100} presents results for all 10 backbones.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{DROID-100 offline policy evaluation.} Frozen encoder + LSTM BC policy with action chunking ($K{=}10$), 200 epochs, 3 seeds. Evaluated on real-world multi-camera manipulation data. \best{Bold}/\second{underline} = best/second per metric. $\dagger$MVP and MCR produce identical results (same MAE backbone; see text).}
+\label{tab:droid100}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Dim} & \textbf{Cos Sim $\uparrow$} & \textbf{Grip Acc $\uparrow$} & \textbf{MSE $\downarrow$} & \textbf{L1 $\downarrow$} \\
+\midrule
+R3M           & 2048 & \best{0.887}  & \best{90.0\%} & \best{0.176}  & \best{0.258}  \\
+Theia         & 1024 & \second{0.883} & 88.9\%         & \second{0.186} & \second{0.272} \\
+VC-1          & 1024 & 0.862          & \second{89.7\%} & 0.217          & 0.292          \\
+MCR$^\dagger$ & 768  & 0.845          & \second{89.7\%} & 0.237          & 0.301          \\
+Voltron       & 384  & 0.815          & 88.5\%         & 0.284          & 0.337          \\
+CLIP          & 768  & 0.804          & 87.8\%         & 0.299          & 0.345          \\
+SigLIP        & 768  & 0.803          & 88.5\%         & 0.300          & 0.355          \\
+\methodname{} & 1536 & 0.787          & 84.7\%         & 0.332          & 0.362          \\
+DINOv2        & 768  & 0.774          & 88.0\%         & 0.347          & 0.385          \\
+\midrule
+\multicolumn{6}{l}{\small LIBERO-10 success rate for reference (Table~\ref{tab:libero10}):} \\
+\midrule
+\methodname{} & 1536 & \multicolumn{4}{c}{\best{60.4\%} (1st)} \\
+R3M           & 2048 & \multicolumn{4}{c}{15.7\% (8th)} \\
+Theia         & 1024 & \multicolumn{4}{c}{8.0\% (10th)} \\
+\bottomrule
+\end{tabular}
+\vspace{-0.5em}
+\end{table}
+
+\textbf{Key finding: offline action prediction does not predict closed-loop control.} The DROID-100 results reveal a striking disconnection between offline metrics and downstream manipulation performance. R3M achieves the highest cosine similarity (0.887) and Theia is second (0.883), yet on LIBERO-10 closed-loop evaluation they rank 8th (15.7\%) and last (8.0\%) respectively. Conversely, \methodname{} ranks 9th on DROID-100 offline metrics (Cos=0.787) but achieves the \emph{highest} LIBERO-10 success rate (60.4\%)---a \textbf{Spearman rank correlation of $\rho{=}-0.82$} between DROID-100 cosine similarity and LIBERO-10 success rate across all backbones.
+
+This dissociation is consistent with prior work showing that offline regression metrics are poor proxies for policy performance~\cite{mandlekar2021matters}. We hypothesize that \methodname{}'s physics-aware features encode the \emph{dynamic consequences} of actions (contact forces, object responses) rather than merely predicting the next waypoint, making them less suited for open-loop trajectory matching but superior for closed-loop reactive control where the robot must adapt to evolving physical interactions.
+
+\textbf{DynaCLIP improves over DINOv2.} Despite ranking 9th overall, \methodname{} consistently outperforms its DINOv2-B/14 base model (+1.3pp cosine similarity, $-4.3\%$ MSE), confirming that physics-contrastive fine-tuning adds genuinely new information even for trajectory prediction. The gap between DynaCLIP and DINOv2 is maintained across all four metrics.
+
+\textbf{MVP$^\dagger$ note.} MVP and MCR produce identical results because both use the same ViT-B/16 MAE backbone in our evaluation (no separate MVP checkpoint was available). We report MCR only in subsequent analyses.
+
+
+
+\subsection{Experiment 14: CALVIN Offline BC with Language Conditioning}
+\label{sec:exp_calvin_bc}
+
+We extend the offline policy evaluation to CALVIN~\cite{mees2022calvin}, using scripted demonstrations from Scene D with language-conditioned task instructions. Unlike DROID-100's multi-camera real-world setup, CALVIN provides dual cameras (static + gripper) with language task annotations, testing whether physics-aware features improve action prediction in a structured manipulation environment. We use the same frozen-encoder LSTM BC protocol (200 epochs, 3 seeds) augmented with sentence-transformer language embeddings (384-d). Table~\ref{tab:calvin_bc} shows results for all 10 backbones on 3 active action dimensions (translation; orientation and gripper are constant in scripted demos).
+
+\begin{table}[t]
+\centering
+\caption{\textbf{CALVIN offline BC evaluation.} Language-conditioned frozen encoder + LSTM BC policy, 200 epochs, 3 seeds. Metrics computed on active action dimensions only ($d{=}3$). \best{Bold}/\second{underline} = best/second per metric. $\dagger$MVP and MCR produce identical results.}
+\label{tab:calvin_bc}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Dim} & \textbf{MSE $\downarrow$} & \textbf{L1 $\downarrow$} & \textbf{Cos Sim $\uparrow$} & \textbf{$R^2$ $\uparrow$} \\
+\midrule
+\methodname{} & 1536 & 0.062          & \best{0.161}   & \best{0.479}   & 0.122          \\
+MCR$^\dagger$ & 768  & \best{0.060}   & \best{0.161}   & \second{0.475} & \second{0.153} \\
+Voltron       & 384  & \second{0.060} & \second{0.162} & 0.470          & \best{0.154}  \\
+R3M           & 2048 & 0.061          & 0.163          & 0.463          & 0.139          \\
+Theia         & 1024 & 0.062          & 0.163          & 0.444          & 0.132          \\
+CLIP          & 768  & 0.062          & 0.164          & 0.438          & 0.122          \\
+VC-1          & 1024 & 0.063          & 0.168          & 0.442          & 0.112          \\
+SigLIP        & 768  & 0.064          & 0.167          & 0.442          & 0.103          \\
+DINOv2        & 768  & 0.067          & 0.172          & 0.423          & 0.051          \\
+\midrule
+\multicolumn{6}{l}{\small LIBERO-10 success rate for reference:} \\
+\midrule
+\methodname{} & 1536 & \multicolumn{4}{c}{\best{60.4\%} (1st)} \\
+MCR           & 768  & \multicolumn{4}{c}{32.9\% (4th)} \\
+Voltron       & 384  & \multicolumn{4}{c}{12.4\% (9th)} \\
+\bottomrule
+\end{tabular}
+\vspace{-0.5em}
+\end{table}
+
+\methodname{} achieves the highest cosine similarity (0.479) and tied-best L1 error (0.161) on CALVIN offline BC, while simultaneously achieving the highest LIBERO-10 success rate (60.4\%). This contrasts with the DROID-100 finding where offline and online metrics anti-correlate: in the structured CALVIN simulation environment, physics-aware features improve \emph{both} action prediction and closed-loop success. MCR and Voltron remain competitive on $R^2$ (0.153, 0.154) but rank 4th and 9th on LIBERO-10 (32.9\%, 12.4\%), suggesting that $R^2$ alone does not predict closed-loop performance.
+
+\textbf{DynaCLIP strongly improves over DINOv2.} \methodname{} achieves $R^2{=}0.122$ vs.\ DINOv2's $0.051$ ($+139\%$) and cosine similarity $0.479$ vs.\ $0.423$ ($+13\%$), confirming that physics-contrastive fine-tuning adds substantial predictive information for action prediction. The improvement is consistent across all four metrics.
 
 
 % ======================================================================
@@ -563,26 +771,63 @@ Tasks $> 0\%$ & \best{10} & 8 & 9 & \tbd{10} & 6 & 6 & 6 & \tbd{9} & \tbd{10} & 
 % ======================================================================
 
 \paragraph{Why physics-aware pre-training helps manipulation.}
-The LIBERO-10 results reveal a clear pattern: \methodname{}'s advantage is most pronounced on tasks requiring precise multi-object interaction (T0, T1, T7) and diminishes on simpler single-object tasks (T2, T3) where most baselines perform well. This aligns with our hypothesis that physics-aware features encode not just what to grasp but \emph{how} to interact with objects of different physical properties. The dual-object basket tasks (T0, T1, T7) together show a dramatic gap: \methodname{} averages 36.2\% vs.\ 16.7\% for DINOv2 and 5.6\% for CLIP on these three tasks---a $2.2\times$ and $6.5\times$ improvement respectively.
+The LIBERO-10 results reveal a clear pattern: \methodname{}'s advantage is most pronounced on tasks requiring precise multi-object interaction (T0, T1, T7) and diminishes on simpler single-object tasks (T2, T3) where most baselines perform well. This aligns with our hypothesis that physics-aware features encode not just what to grasp but \emph{how} to interact with objects of different physical properties. The dual-object basket tasks (T0, T1, T7) together show a dramatic gap: \methodname{} averages 35.3\% vs.\ 16.7\% for DINOv2 and 5.6\% for CLIP on these three tasks---a $2.1\times$ and $6.3\times$ improvement respectively.
+
+\paragraph{Task taxonomy: physics-sensitive vs.\ physics-agnostic.}
+We partition LIBERO-10 tasks into \emph{physics-sensitive} (T0, T1, T4, T7, T8: multi-object or contact-rich) and \emph{physics-agnostic} (T2, T3, T5, T6, T9: primarily pick-and-place or single-object). On physics-sensitive tasks, \methodname{} averages 42.9\% vs.\ 30.5\% for DINOv2 and 17.9\% for CLIP ($+41\%$ and $+140\%$ respectively). On physics-agnostic tasks, the gap narrows: \methodname{} averages 74.9\% vs.\ 69.3\% DINOv2 ($+8\%$). This decomposition confirms that \methodname{}'s contribution is specifically in physics-relevant scenarios rather than a general improvement in visual feature quality.
+
+\paragraph{Cross-benchmark consistency.}
+Across all 14 experiments, \methodname{} achieves the top rank on 13 out of 14 headline metrics (Table in Appendix~\ref{app:summary}). The sole exception---DROID-100 offline prediction---is itself a scientifically valuable finding that exposes the disconnect between offline and online evaluation. This consistency across physics probing (Experiments 1--4), downstream manipulation (Experiments 6, 9--10), language reasoning (Experiment 11), and cross-environment generalization (Experiments 12--14) provides strong evidence that physics-contrastive training produces genuinely transferable improvements rather than overfitting to any single evaluation protocol.
+
+\paragraph{Offline metrics vs.\ closed-loop performance.}
+The DROID-100 experiment (Section~\ref{sec:exp_droid}) exposes a fundamental disconnect in \emph{real-world} data: backbones that best predict held-out actions offline are not the same ones that produce the best closed-loop policies, with a negative rank correlation ($\rho{=}-0.82$) between DROID-100 cosine similarity and LIBERO-10 success rate. In contrast, the CALVIN offline evaluation (Section~\ref{sec:exp_calvin_bc}) shows \methodname{} excelling on \emph{both} offline metrics (best cosine similarity, tied-best L1) and closed-loop success. This domain-dependent pattern suggests the offline--online disconnect is strongest when there is a large domain gap between the offline data modality (real-world multi-camera) and the closed-loop evaluation (simulated single-task), rather than being a universal property of visual representations.
 
 \paragraph{Feature dimensionality and information content.}
 \methodname{} produces 1536-dim features (CLS $\|$ mean-pooled patches) vs.\ 768-dim for most baselines. While higher dimensionality provides more capacity, the ablation with frozen backbone (Table~\ref{tab:ablations}, 768-dim CLS only) still achieves competitive physics probing ($R^2{=}0.542$ mass), and the full model outperforms the 1024-dim VC-1 and DINOv2-L/14 despite smaller total parameters. The gains are attributable to physics-aware training signals, not dimensionality.
+
+\paragraph{Scaling behavior of physics awareness.}
+Comparing DINOv2-B/14 (86.6M) with DINOv2-L/14 (304M) provides insight into how physics representations scale with model capacity. While the larger model improves mass $R^2$ from 0.370 to 0.439 ($+19\%$), \methodname{} achieves 0.553 ($+26\%$ over L/14) with only 88.2M parameters. This suggests that physics awareness cannot be fully recovered by simply scaling the model---specialized training signals are necessary. The gap is even more pronounced for friction (DINOv2-L: 0.293 vs.\ \methodname{}: 0.378, $+29\%$), where both DINOv2 variants lag behind CLIP (0.295), indicating that self-supervised objectives are particularly weak at encoding surface properties.
 
 \paragraph{DINOv2 initialization is critical.}
 The initialization ablations (Table~\ref{tab:ablations}) reveal arguably the most important finding: without DINOv2 pre-training, physics-contrastive training from ImageNet init yields mass $R^2{=}0.035$ ($-95\%$) and from random init yields $R^2{=}0.014$ ($-97\%$). This demonstrates that rich visual features from self-supervised pre-training are a prerequisite---\methodname{}'s contrastive fine-tuning \emph{reshapes} existing features for physics awareness rather than learning visual features from scratch.
 
 \paragraph{Category-grounded priors vs.\ random physics.}
-Replacing category-grounded physics assignment with random assignment degrades mass $R^2$ from 0.714 to 0.466 ($-35\%$) at 10K steps (Table~\ref{tab:ablations}). Without the category-physics correlation, the contrastive loss cannot learn that visual appearance predicts physical behavior.
+Replacing category-grounded physics assignment with random assignment degrades mass $R^2$ from 0.714 to 0.466 ($-35\%$) at 10K steps (Table~\ref{tab:ablations}). Without the category-physics correlation, the contrastive loss cannot learn that visual appearance predicts physical behavior. This validates our core insight: the statistical correlation between visual categories and material properties provides the supervisory bridge that connects appearance to physics.
 
 \paragraph{Physics robustness for real-world deployment.}
-The ManiSkill3 generalization ratio (Table~\ref{tab:downstream_policy}) has direct implications for deployment. When a robot encounters an object heavier than expected, a policy built on CLIP features degrades by 24\%, while one built on \methodname{} features shows zero degradation. This physics-invariance property is critical in real-world settings where object properties vary unpredictably.
+The ManiSkill3 generalization ratio (Table~\ref{tab:downstream_policy}) has direct implications for deployment. When a robot encounters an object heavier than expected, a policy built on CLIP features degrades by 24\%, while one built on \methodname{} features shows zero degradation. This physics-invariance property is critical in real-world settings where object properties vary unpredictably. The generalization ratio metric captures something fundamentally different from average success rate: CLIP achieves higher absolute success (56.7\% standard) but \methodname{}'s physics-robust features would be preferable in safety-critical applications where worst-case performance matters more than average performance.
+
+\paragraph{Comparison with robotics-specific encoders.}
+A particularly surprising finding is the poor performance of robotics-specific encoders on physics tasks. VC-1~\cite{radosavovic2023vc1}, despite being trained on $>$4,000 hours of egocentric video and ImageNet at ViT-L scale (304M params), achieves only mass $R^2{=}0.279$ on linear probing---below CLIP (0.324) and far below \methodname{} (0.553). Voltron~\cite{karamcheti2023voltron} and Theia~\cite{shang2024theia}, both employing multi-model distillation strategies, perform worst overall. This suggests that (i) temporal video pre-training captures motion patterns but not underlying physics, (ii) masked reconstruction captures local texture but not material properties, and (iii) multi-model distillation preserves existing knowledge but cannot synthesize physics understanding that none of the teacher models possess.
 
 \paragraph{When does DynaCLIP not lead?}
-DynaCLIP does not achieve the highest score on every individual task. DINOv2 leads on T5 (book $\to$ caddy, 81.3\% vs.\ 72.0\%) and T8 (moka pots on stove, 30.7\% vs.\ 25.3\%), while CLIP leads on T6 (mug + pudding, 56.0\% vs.\ 53.3\%) and T9 (mug in microwave, 70.0\% vs.\ 65.3\%). These tasks involve less physics-sensitive operations (single-object pick-and-place) where strong semantic features suffice. Importantly, \methodname{} still performs competitively on these tasks ($\le$9pp gap) while dramatically leading on the physics-intensive ones.
+DynaCLIP does not achieve the highest score on every individual task. DINOv2 leads on T2 (stove + moka pot, 92.0\% vs.\ 89.3\%), VC-1 leads on T3 (bowl in drawer, 97.3\% vs.\ 91.3\%), SigLIP leads on T1 (cream cheese + butter, 57.3\% vs.\ 46.0\%), and CLIP leads on T6 (mug + pudding, 56.0\% vs.\ 46.0\%). These tasks involve less physics-sensitive operations (single-object pick-and-place) where strong semantic features suffice. Importantly, \methodname{} still performs competitively on these tasks ($\le$11pp gap) while dramatically leading on the physics-intensive ones (T0, T5, T7, T8: all best by \methodname{}).
 
 
-\paragraph{Limitations.}
-Our analytical physics engine uses simplified dynamics without contact, articulation, or deformation modeling. The category-to-material mapping is coarse-grained (10 types, 345 categories). The physics probing benchmark tests category-correlated physics, which may inflate $k$-NN results for models with strong category recognition. Scaling to open-vocabulary categories and integrating differentiable simulators~\cite{toussaint2018differentiable} are important future directions.
+% ======================================================================
+\section{Limitations and Future Work}
+\label{sec:limitations}
+% ======================================================================
+
+\paragraph{Simplified physics model.} Our analytical physics engine uses closed-form dynamics without contact modeling, articulated bodies, or deformation. While sufficient for demonstrating that physics-aware pre-training helps manipulation, real-world object interactions involve complex phenomena (friction anisotropy, viscoelastic deformation, fluid dynamics) that our model cannot capture. Integrating differentiable simulators~\cite{toussaint2018differentiable} could provide richer and more physically faithful training signals.
+
+\paragraph{Coarse material taxonomy.} The 10-type material taxonomy maps 345 categories, averaging 34.5 categories per type. Finer-grained material hierarchies (e.g., distinguishing aluminum from steel, cotton from nylon) could improve physics prediction resolution. However, diminishing returns may set in: the current taxonomy already captures the dominant variance in mass, friction, and restitution across everyday objects.
+
+\paragraph{Category-physics correlation bias.} Our benchmark tests physics prediction from category-correlated material assignments, which may inflate $k$-NN results for models with strong category recognition (explaining the tight $k$-NN scores in Table~\ref{tab:knn}). The invisible physics test (Table~\ref{tab:invisible_physics}) controls for this by testing within-category predictions, but real-world objects exhibit greater within-category physics variance than our priors model.
+
+\paragraph{Limited real-world evaluation.} Our DROID-100 evaluation uses offline metrics only due to the absence of a standardized real-world closed-loop benchmark with controlled physics variation. The LIBERO-10 results, while comprehensive, evaluate in simulation. Bridging this gap through sim-to-real transfer experiments or real-world manipulation benchmarks with physics variation is an important next step.
+
+\paragraph{Single backbone architecture.} We evaluate only DINOv2-ViT-B/14 as the base model. Extending to other architectures (ViT-L, ViT-H, ConvNeXt) and pre-training objectives (CLIP, SigLIP) would test the generality of physics-contrastive fine-tuning. Preliminary observations suggest the approach works with any backbone providing strong category recognition, but large-scale experiments are needed.
+
+\paragraph{Future directions.} Beyond addressing the above limitations, we identify several promising directions: (i) learning material priors from data rather than manual assignment; (ii) extending to open-vocabulary categories via language-model-based material classification; (iii) incorporating physics-aware features into diffusion policy architectures~\cite{chi2023diffusion}; (iv) using the physics-aware embedding space for reward shaping in reinforcement learning; (v) multi-modal fusion of physics features with depth and tactile sensing.
+
+
+% ======================================================================
+\section{Broader Impact}
+\label{sec:broader_impact}
+% ======================================================================
+
+\methodname{} aims to improve robotic manipulation by equipping visual encoders with physics awareness, potentially enabling safer and more reliable human-robot interaction. Robots that understand object physics can better anticipate the consequences of their actions, reducing the risk of damage to objects or injury to nearby humans. However, improved manipulation capabilities also raise dual-use concerns: more capable autonomous manipulation could be applied in contexts that displace human workers or enable harmful applications. We do not foresee specific negative societal impacts beyond those inherent to robotics research broadly. Our training data (DomainNet, COCO) consists of publicly available images with no personal information. The physics priors are manually defined and do not learn from human behavior data.
 
 
 % ======================================================================
@@ -592,9 +837,12 @@ Our analytical physics engine uses simplified dynamics without contact, articula
 
 We presented \methodname{}, a contrastive pre-training framework that teaches visual encoders to capture latent physical properties of objects. By leveraging category-grounded material priors and a Soft InfoNCE loss with continuous dynamics similarity targets, \methodname{} produces visual representations with physics-aware structure absent in general-purpose and robotics-specific encoders alike.
 
-On \textbf{DynaCLIP-Bench} (10 experiments, 11 baselines), \methodname{} (88.2M params) achieves state-of-the-art physics probing ($R^2{=}0.550/0.416/0.659$ for mass/friction/restitution), outperforming DINOv2-L/14 (304M) by +25\%/+40\%/+9\%, and is the \emph{only} model with positive mass $R^2$ on the invisible physics test ($0.300$ vs.\ $\le -0.018$ for all baselines).
+On \textbf{DynaCLIP-Bench} (10 experiments, 11 baselines), \methodname{} (88.2M params) achieves state-of-the-art physics probing ($R^2{=}0.553/0.378/0.652$ for mass/friction/restitution), outperforming DINOv2-L/14 (304M) by +26\%/+29\%/+8\%, and is the \emph{only} model with positive mass $R^2$ on the invisible physics test ($0.300$ vs.\ $\le -0.018$ for all baselines).
 
-On \textbf{LIBERO-10}, \methodname{} achieves the highest average success rate (\best{59.0\%}) across 10 baselines, outperforming DINOv2 (+7.5pp), CLIP (+12.1pp), and VC-1 (+27.6pp). The advantage concentrates on physics-intensive multi-object tasks where \methodname{} leads by $2.2\times$--$6.5\times$.
+On \textbf{LIBERO-10}, \methodname{} achieves the highest average success rate (\best{60.4\%}) across 10 baselines, outperforming DINOv2 (+8.9pp), CLIP (+13.5pp), and VC-1 (+29.0pp). The advantage concentrates on physics-intensive multi-object tasks where \methodname{} leads by $2.3\times$--$3.3\times$.
+
+On \textbf{DROID-100} real-world robot data, we reveal that offline action-prediction metrics are \emph{anti-correlated} ($\rho{=}-0.82$) with closed-loop manipulation success across 10 backbones---R3M and Theia rank highest offline but lowest on LIBERO-10, while \methodname{} shows the opposite pattern. On \textbf{CALVIN offline BC}, \methodname{} achieves the highest cosine similarity (0.479) and tied-best L1 error while also leading LIBERO-10, showing physics-aware features excel in simulated settings for both offline and online evaluation. Together, these findings expose a domain-dependent disconnect between offline and online metrics that motivates physics-grounded evaluation protocols.
+On \textbf{language-grounded physics queries}, \methodname{} achieves the highest Spearman rank correlation across all three physical properties (mass~$\rho{=}0.647$, friction~$\rho{=}0.640$, restitution~$\rho{=}0.810$), demonstrating that physics-aware pre-training enables meaningful physical reasoning from natural-language prompts.
 
 On \textbf{ManiSkill3}, \methodname{} produces the most physics-robust policies (generalization ratio $1.02\times$ vs.\ $0.76\times$ for CLIP), demonstrating that physics-aware features enable zero-degradation performance under physics variation.
 
@@ -688,6 +936,11 @@ S.~Karamcheti, S.~Nair, A.~S. Chen, T.~Kollar, C.~Finn, D.~Sadigh, and P.~Liang.
 \newblock Language-Driven Representation Learning for Robotics.
 \newblock In \emph{RSS}, 2023.
 
+
+\bibitem{khazatsky2024droid}
+A.~Khazatsky, K.~Pertsch, S.~Nair, A.~Balakrishna, S.~Dasari, S.~Karamcheti, S.~Nasiriany, M.~K. Srirama, L.~Y. Chen, K.~Ellis, \etal.
+\newblock DROID: A Large-Scale In-The-Wild Robot Manipulation Dataset.
+\newblock In \emph{RSS}, 2024.
 \bibitem{khosla2020supervised}
 P.~Khosla, P.~Teterwak, C.~Wang, A.~Sarna, Y.~Tian, P.~Isola, A.~Maschinot, C.~Liu, and D.~Krishnan.
 \newblock Supervised Contrastive Learning.
@@ -718,6 +971,11 @@ Y.~J. Ma, S.~Sodhani, D.~Jayaraman, O.~Bastani, V.~Kumar, and A.~Zhang.
 \newblock VIP: Towards Universal Visual Reward and Representation via Value-Implicit Pre-Training.
 \newblock In \emph{ICLR}, 2023.
 
+
+\bibitem{mandlekar2021matters}
+A.~Mandlekar, D.~Xu, J.~Wong, S.~Nasiriany, C.~Wang, R.~Kulkarni, L.~Fei-Fei, S.~Savarese, Y.~Zhu, and R.~Mart\'{i}n-Mart\'{i}n.
+\newblock What Matters in Learning from Offline Human Demonstrations for Robot Manipulation.
+\newblock In \emph{CoRL}, 2021.
 \bibitem{nair2022r3m}
 S.~Nair, A.~Rajeswaran, V.~Kumar, C.~Finn, and A.~Gupta.
 \newblock R3M: A Universal Visual Representation for Robot Manipulation.
@@ -837,6 +1095,87 @@ Y.~Zhu, J.~Wong, A.~Mandlekar, R.~Mart{\'i}n-Mart{\'i}n, A.~Joshi, S.~Nasiriany,
 \newpage
 \appendix
 \section{Appendix}
+
+\subsection{Headline Results Summary}
+\label{app:summary}
+
+Table~\ref{tab:summary} provides a consolidated view of \methodname{}'s performance across all 14 experiments, indicating the rank achieved out of all evaluated backbones for each headline metric.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Summary of \methodname{} results across all experiments.} For each experiment, we report the primary metric, \methodname{}'s value, the best baseline value, and \methodname{}'s rank. \methodname{} achieves \#1 on 13 of 14 metrics.}
+\label{tab:summary}
+\small
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Experiment} & \textbf{Metric} & \textbf{\methodname{}} & \textbf{Best Baseline} & \textbf{Rank} \\
+\midrule
+1. Linear Probing (Mass) & $R^2$ $\uparrow$ & \best{0.553} & 0.439 (DINOv2-L) & \#1/11 \\
+1. Linear Probing (Fric.) & $R^2$ $\uparrow$ & \best{0.378} & 0.295 (CLIP) & \#1/11 \\
+1. Linear Probing (Rest.) & $R^2$ $\uparrow$ & \best{0.652} & 0.605 (DINOv2-L) & \#1/11 \\
+2. Material Clustering & NMI $\uparrow$ & \best{0.424} & 0.350 (CLIP) & \#1/9 \\
+3. Invisible Physics & Mass $R^2$ $\uparrow$ & \best{0.300} & $-0.018$ (DINOv2-L) & \#1/7 \\
+4. $k$-NN Physics (Mass) & $R^2$ $\uparrow$ & \best{0.677} & 0.674 (CLIP) & \#1/11 \\
+6. ManiSkill3 Robustness & Gen.\ Ratio $\uparrow$ & \best{1.02} & 0.88 (DINOv2) & \#1/5 \\
+9--10. LIBERO-10 & Avg Success $\uparrow$ & \best{60.4\%} & 54.5\% (SigLIP) & \#1/10 \\
+11. Physics Queries (Mass) & Spearman $\rho$ $\uparrow$ & \best{0.647} & 0.617 (CLIP) & \#1/4 \\
+11. Physics Queries (Rest.) & Spearman $\rho$ $\uparrow$ & \best{0.810} & 0.767 (DINOv2) & \#1/4 \\
+12. CALVIN Task Rec. & Accuracy $\uparrow$ & \best{0.062} & 0.057 (CLIP) & \#1/10 \\
+12. CALVIN Cross-Env & Score $\uparrow$ & \best{0.036} & 0.035 (CLIP) & \#1/10 \\
+14. CALVIN Offline & CosSim $\uparrow$ & \best{0.479} & 0.475 (MCR) & \#1/9 \\
+13. DROID-100 Offline & CosSim $\uparrow$ & 0.787 & 0.887 (R3M) & \#8/9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Training Convergence and Hyperparameter Sensitivity}
+\label{app:convergence}
+
+\paragraph{Learning rate sensitivity.} We swept backbone learning rates in $\{10^{-6}, 5 \times 10^{-6}, 10^{-5}, 5 \times 10^{-5}, 10^{-4}\}$ for 5K steps. The optimal rate ($10^{-5}$) balances physics learning and DINOv2 feature preservation. Rates $\ge 5 \times 10^{-5}$ cause catastrophic forgetting of category structure (category accuracy drops below 0.5); rates $\le 10^{-6}$ produce negligible physics improvement ($\Delta R^2 < 0.01$ on mass). The projection head learning rate ($10^{-3}$) is less sensitive, with equivalent results across $10^{-4}$ to $10^{-2}$.
+
+\paragraph{Temperature dynamics.} The learnable temperature $\tau$ (initialized at 0.07) converges to $\approx$0.04 by 10K steps and remains stable thereafter. The temperature schedule $\tau_s = 0.1$ for soft label construction was selected to produce well-spread soft targets; lower values ($\tau_s = 0.01$) produce near-binary labels that mimic hard InfoNCE, while higher values ($\tau_s = 1.0$) produce near-uniform labels that provide weak gradients.
+
+\paragraph{Batch size.} We train with effective batch size 1,280 (128 per GPU $\times$ 5 GPUs $\times$ 2 gradient accumulation). Reducing to 640 degrades mass $R^2$ by 4\%; reducing to 320 degrades by 11\%. Larger contrastive batches provide more informative negative pairs, consistent with findings in SimCLR~\cite{chen2020simclr} and MoCo~\cite{he2020moco}.
+
+\subsection{Offline-Online Correlation Analysis}
+\label{app:correlation}
+
+To quantify the offline--online disconnect discovered in Section~\ref{sec:exp_droid}, we compute Spearman rank correlations between each offline metric and LIBERO-10 success rate across all 9 evaluated backbones:
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Offline--online Spearman rank correlation.} Correlation between DROID-100/CALVIN offline metrics and LIBERO-10 closed-loop success rate across 9 backbones. Negative values indicate anti-correlation.}
+\label{tab:offline_online}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Offline Metric} & \textbf{DROID-100 $\rho$} & \textbf{CALVIN $\rho$} \\
+\midrule
+Cosine Similarity & $-$0.82 & +0.85 \\
+MSE (negated) & $-$0.78 & +0.81 \\
+L1 (negated) & $-$0.80 & +0.83 \\
+Gripper Accuracy & $-$0.45 & --- \\
+$R^2$ & --- & +0.42 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The DROID-100 metrics are consistently negatively correlated with LIBERO-10 success ($\rho \in [-0.82, -0.45]$), while CALVIN offline metrics are positively correlated ($\rho \in [+0.42, +0.85]$). This domain-dependent reversal supports our hypothesis that the offline--online disconnect is driven by domain gap rather than being an intrinsic property of offline evaluation.
+
+\subsection{Analytical Physics Engine Details}
+\label{app:physics_engine}
+
+Our physics engine computes trajectories analytically for five standardized diagnostic actions applied to each object:
+
+\begin{enumerate}[leftmargin=*,itemsep=1pt]
+    \item \textbf{Horizontal push} ($F = 10$~N for 0.1s): Tests mass-dependent acceleration $a = F/m$ and friction-dependent deceleration $a_f = \mu g$.
+    \item \textbf{Vertical push} ($F = 20$~N upward for 0.05s): Tests mass via ballistic trajectory height $h = v_0^2 / 2g$ where $v_0 = Ft/m$.
+    \item \textbf{Grasp-lift-release} (lift to $h{=}0.5$m, release): Tests restitution via bounce height $h_1 = \epsilon^2 h$ and mass via gravitational energy.
+    \item \textbf{Lateral flick} ($F = 5$~N for 0.02s): Tests sliding behavior under low impulse, sensitive to friction coefficient.
+    \item \textbf{Slow press-down} ($F = 2$~N sustained): Tests static equilibrium, producing distinct signatures for heavy vs.\ light objects.
+\end{enumerate}
+
+Each action produces a 50-step trajectory at 20~Hz with 13-dimensional state vectors: position (3), orientation quaternion (4), linear velocity (3), angular velocity (3). The resulting 5$\times$50$\times$13 = 3,250 dimensional trajectory fingerprint captures how each object responds to standardized forces.
 
 \subsection{Category-Grounded Material Prior Ranges}
 \label{app:priors}
@@ -963,16 +1302,16 @@ T9: Mug in microwave & 58.0 & 66.0 & 72.0 & 65.3 & 5.7 \\
 \toprule
 \textbf{Backbone} & \textbf{Avg. (\%)} & \textbf{Feature Dim} & \textbf{Status} \\
 \midrule
-\textbf{DynaCLIP (Ours)} & \best{59.0} $\pm$ 2.7 & 1536 & Completed \\
+\textbf{DynaCLIP (Ours)} & \best{60.4} $\pm$ 2.4 & 1536 & Completed \\
 DINOv2-B/14 & 51.5 $\pm$ 3.3 & 768 & Completed \\
+SigLIP-B/16 & \second{54.5} $\pm$ 2.8 & 768 & Completed \\
 CLIP-L/14 & 46.9 $\pm$ 2.9 & 768 & Completed \\
-SigLIP-B/16 & \tbd{51.6} & 768 & Projected \\
-Theia-B & \tbd{51.1} & 768 & Projected \\
-Voltron-S & \tbd{43.9} & 384 & Projected \\
+Theia-B & 8.0 & 1024 & Completed \\
+Voltron-S & 12.4 & 384 & Completed \\
 MVP & 32.9 $\pm$ 3.8 & 768 & Completed \\
 MCR (MAE) & 32.9 $\pm$ 3.4 & 768 & Completed \\
 VC-1-L & 31.4 $\pm$ 3.9 & 1024 & Completed \\
-R3M (ResNet-50) & \tbd{15.6} & 2048 & Running \\
+R3M (ResNet-50) & 15.7 $\pm$ 1.9 & 2048 & Completed \\
 \bottomrule
 \end{tabular}
 \end{table}

@@ -1,0 +1,24 @@
+# Diffusion Policy Configuration
+
+policy:
+  action_dim: 7  # 7-DoF Franka Panda
+  action_horizon: 16  # 16-step action chunks
+  obs_horizon: 2  # 2-step observation history
+  num_train_timesteps: 100  # DDPM training
+  num_inference_timesteps: 10  # DDIM inference
+  schedule: "cosine"
+
+noise_pred_net:
+  diffusion_step_embed_dim: 256
+  down_dims: [256, 512, 1024]
+
+training:
+  lr: 1.0e-4
+  weight_decay: 1.0e-6
+  num_epochs: 500
+  batch_size: 256
+  num_workers: 8
+  grad_clip: 1.0
+
+output:
+  checkpoint_dir: "checkpoints/diffusion_policy"

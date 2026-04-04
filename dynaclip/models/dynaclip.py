@@ -78,6 +78,8 @@ class DynaCLIPModel(nn.Module):
             output_dim=embed_dim,
         )
 
+        # NO learnable temperature here — temperature belongs in the loss function only
+
         # Freeze control
         if freeze_backbone:
             self._freeze_backbone()
@@ -93,6 +95,7 @@ class DynaCLIPModel(nn.Module):
     def enable_gradient_checkpointing(self):
         """Enable gradient checkpointing to reduce memory at cost of ~30% slower training."""
         self._use_gradient_checkpointing = True
+        # Also enable on backbone if it supports it
         if hasattr(self.backbone, 'set_grad_checkpointing'):
             self.backbone.set_grad_checkpointing(True)
         logger.info("Gradient checkpointing enabled")
@@ -123,6 +126,7 @@ class DynaCLIPModel(nn.Module):
             features: (B, 1536) = CLS(768) || mean_patch(768)
         """
         if self._use_gradient_checkpointing and self.training:
+            # Use gradient checkpointing: wrap forward_features
             output = grad_checkpoint(
                 self.backbone.forward_features, images, use_reentrant=False
             )
@@ -133,6 +137,7 @@ class DynaCLIPModel(nn.Module):
             cls_token = output.get("x_norm_clstoken", None)
             patch_tokens = output.get("x_norm_patchtokens", None)
             if cls_token is None or patch_tokens is None:
+                # Fallback for different DINOv2 versions
                 x = output.get("x", None)
                 if x is not None:
                     cls_token = x[:, 0]

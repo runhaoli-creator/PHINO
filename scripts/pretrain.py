@@ -104,6 +104,8 @@ def main():
         log_every=cfg["logging"]["log_every"],
         eval_every=cfg["logging"]["eval_every"],
         save_every=cfg["logging"]["save_every"],
+        wiseft_alpha=train_cfg.get("wiseft_alpha", 0.0),
+        use_physics_vectors=(loss_cfg["name"] in ("rnc", "pairwise_physics")),
     )
 
     # Resume

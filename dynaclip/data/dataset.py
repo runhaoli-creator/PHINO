@@ -186,16 +186,32 @@ class DynaCLIPContrastiveDataset(Dataset):
         i, j, dyn_sim = self.pairs[idx]
         img_i = self._load_image(i)
         img_j = self._load_image(j)
+
+        # Physics vectors: [log(mass), friction, restitution] for RnC loss
+        mi, mj = self.metadata[i], self.metadata[j]
+        physics_i = torch.tensor([
+            np.log(mi["mass"] + 1e-6),
+            mi["static_friction"],
+            mi["restitution"],
+        ], dtype=torch.float32)
+        physics_j = torch.tensor([
+            np.log(mj["mass"] + 1e-6),
+            mj["static_friction"],
+            mj["restitution"],
+        ], dtype=torch.float32)
+
         return {
             "img_i": img_i,
             "img_j": img_j,
             "dynamics_similarity": torch.tensor(dyn_sim, dtype=torch.float32),
-            "mass_i": torch.tensor(self.metadata[i]["mass"], dtype=torch.float32),
-            "mass_j": torch.tensor(self.metadata[j]["mass"], dtype=torch.float32),
-            "friction_i": torch.tensor(self.metadata[i]["static_friction"], dtype=torch.float32),
-            "friction_j": torch.tensor(self.metadata[j]["static_friction"], dtype=torch.float32),
-            "restitution_i": torch.tensor(self.metadata[i]["restitution"], dtype=torch.float32),
-            "restitution_j": torch.tensor(self.metadata[j]["restitution"], dtype=torch.float32),
+            "physics_i": physics_i,
+            "physics_j": physics_j,
+            "mass_i": torch.tensor(mi["mass"], dtype=torch.float32),
+            "mass_j": torch.tensor(mj["mass"], dtype=torch.float32),
+            "friction_i": torch.tensor(mi["static_friction"], dtype=torch.float32),
+            "friction_j": torch.tensor(mj["static_friction"], dtype=torch.float32),
+            "restitution_i": torch.tensor(mi["restitution"], dtype=torch.float32),
+            "restitution_j": torch.tensor(mj["restitution"], dtype=torch.float32),
             "idx_i": i,
             "idx_j": j,
         }

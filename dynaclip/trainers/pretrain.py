@@ -1,13 +1,14 @@
 """
-DynaCLIP Training Pipeline: Distributed pre-training with Soft InfoNCE.
+DynaCLIP Training Pipeline: Distributed pre-training with RnC / Soft InfoNCE.
 
 Supports:
   - Multi-GPU training (DDP) via torchrun
-  - bf16 mixed precision (NO GradScaler for bf16)
+  - bf16 mixed precision (NO GradScaler for bf16, only for fp16)
   - Cosine annealing with warmup
   - Separate LR for backbone (1e-5) and projection head (1e-3)
   - Learnable temperature (in loss function)
-  - WandB logging (optional)
+  - WiSE-FT feature-space regularization (prevents embedding distortion)
+  - WandB logging
 """
 
 import logging
@@ -18,6 +19,7 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
@@ -70,11 +72,14 @@ class DynaCLIPTrainer:
         save_every: int = 10000,
         checkpoint_dir: str = "checkpoints",
         use_bf16: bool = True,
-        use_wandb: bool = False,
+        use_wandb: bool = True,
         project_name: str = "dynaclip",
         run_name: Optional[str] = None,
         device: str = "cuda",
         local_rank: int = -1,
+        # WiSE-FT feature-space regularization
+        wiseft_alpha: float = 0.0,  # 0 = disabled, >0 = regularize toward frozen backbone
+        use_physics_vectors: bool = False,  # Whether loss expects physics vectors
     ):
         self.model = model
         self.loss_fn = loss_fn
@@ -94,6 +99,7 @@ class DynaCLIPTrainer:
 
         # Move model to device
         self.model = self.model.to(device)
+        # Also move loss_fn (it may have learnable params like temperature)
         self.loss_fn = self.loss_fn.to(device)
 
         # DDP wrapping
@@ -108,6 +114,7 @@ class DynaCLIPTrainer:
         # Optimizer with separate LR for backbone and head + loss params
         raw_model = self.model.module if hasattr(self.model, "module") else self.model
         param_groups = raw_model.get_param_groups(backbone_lr=backbone_lr, head_lr=head_lr)
+        # Add loss function's learnable parameters (e.g., temperature)
         loss_params = list(self.loss_fn.parameters())
         if loss_params:
             param_groups.append({"params": loss_params, "lr": head_lr})
@@ -121,8 +128,8 @@ class DynaCLIPTrainer:
             total_steps=total_steps,
         )
 
-        # Mixed precision
-        self.use_scaler = not use_bf16
+        # Mixed precision: bf16 does NOT use GradScaler (that's only for fp16)
+        self.use_scaler = not use_bf16  # Only use scaler for fp16
         if self.use_scaler:
             self.scaler = torch.amp.GradScaler('cuda')
         else:
@@ -151,6 +158,21 @@ class DynaCLIPTrainer:
 
         self.global_step = 0
         self.best_val_loss = float("inf")
+        self.use_physics_vectors = use_physics_vectors
+        self.wiseft_alpha = wiseft_alpha
+
+        # WiSE-FT: store frozen copy of backbone for feature-space regularization
+        if wiseft_alpha > 0:
+            import copy
+            raw_model = self.model.module if hasattr(self.model, "module") else self.model
+            self.frozen_backbone = copy.deepcopy(raw_model.backbone)
+            self.frozen_backbone.eval()
+            for p in self.frozen_backbone.parameters():
+                p.requires_grad = False
+            self.frozen_backbone = self.frozen_backbone.to(device)
+            logger.info(f"WiSE-FT enabled: alpha={wiseft_alpha}, frozen backbone stored")
+        else:
+            self.frozen_backbone = None
 
     def train(self):
         """Run full pre-training loop."""
@@ -166,6 +188,7 @@ class DynaCLIPTrainer:
         start_time = time.time()
 
         while self.global_step < self.total_steps:
+            # Get batch
             try:
                 batch = next(data_iter)
             except StopIteration:
@@ -175,6 +198,7 @@ class DynaCLIPTrainer:
             loss_dict = self._train_step(batch, micro_step)
             micro_step += 1
 
+            # Only count global_step on actual optimizer steps
             if micro_step % self.grad_accum_steps == 0:
                 self.global_step += 1
                 running_loss += loss_dict["loss"]
@@ -235,11 +259,43 @@ class DynaCLIPTrainer:
         with torch.amp.autocast('cuda', dtype=self.amp_dtype):
             raw_model = self.model.module if hasattr(self.model, "module") else self.model
             z_i, z_j = raw_model.encode_pair(img_i, img_j)
-            loss_dict = self.loss_fn(z_i, z_j, dyn_sim)
+
+            # Route to appropriate loss interface
+            if self.use_physics_vectors:
+                physics_i = batch["physics_i"].to(self.device, non_blocking=True)
+                physics_j = batch["physics_j"].to(self.device, non_blocking=True)
+                loss_dict = self.loss_fn(z_i, z_j, physics_i, physics_j, dyn_sim)
+            else:
+                loss_dict = self.loss_fn(z_i, z_j, dyn_sim)
+
+            # WiSE-FT: feature-space regularization toward frozen DINOv2
+            if self.frozen_backbone is not None and self.wiseft_alpha > 0:
+                with torch.no_grad():
+                    frozen_out = self.frozen_backbone.forward_features(img_i)
+                    if isinstance(frozen_out, dict):
+                        frozen_cls = frozen_out.get("x_norm_clstoken", None)
+                        frozen_patch = frozen_out.get("x_norm_patchtokens", None)
+                        if frozen_cls is None or frozen_patch is None:
+                            x = frozen_out.get("x", None)
+                            if x is not None:
+                                frozen_cls = x[:, 0]
+                                frozen_patch = x[:, 1:]
+                            else:
+                                raise RuntimeError(f"Unexpected frozen DINOv2 output keys: {frozen_out.keys()}")
+                    else:
+                        frozen_cls = frozen_out[:, 0]
+                        frozen_patch = frozen_out[:, 1:]
+                    frozen_feats = torch.cat([frozen_cls, frozen_patch.mean(dim=1)], dim=-1)
+
+                live_feats = raw_model.extract_features(img_i)
+                reg_loss = F.mse_loss(live_feats, frozen_feats)
+                loss_dict["loss"] = loss_dict["loss"] + self.wiseft_alpha * reg_loss
+                loss_dict["reg_loss"] = reg_loss.detach()
 
         loss = loss_dict["loss"] / self.grad_accum_steps
 
         if self.use_scaler:
+            # fp16 path: use GradScaler
             self.scaler.scale(loss).backward()
             if (micro_step + 1) % self.grad_accum_steps == 0:
                 self.scaler.unscale_(self.optimizer)
@@ -251,6 +307,7 @@ class DynaCLIPTrainer:
                 self.optimizer.zero_grad()
                 self.scheduler.step()
         else:
+            # bf16 path: no GradScaler needed
             loss.backward()
             if (micro_step + 1) % self.grad_accum_steps == 0:
                 nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
@@ -284,6 +341,14 @@ class DynaCLIPTrainer:
 
         avg_loss = total_loss / max(n_batches, 1)
         logger.info(f"Validation loss: {avg_loss:.4f}")
+
+        if self.use_wandb and self.local_rank <= 0:
+            try:
+                import wandb
+                wandb.log({"val/loss": avg_loss, "step": self.global_step})
+            except Exception:
+                pass
+
         return avg_loss
 
     def _save_checkpoint(self, tag: str):
@@ -314,9 +379,11 @@ class DynaCLIPTrainer:
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         self.global_step = ckpt["global_step"]
         self.best_val_loss = ckpt.get("best_val_loss", float("inf"))
+        # Restore scheduler state
         if "scheduler_step_count" in ckpt:
             self.scheduler.step_count = ckpt["scheduler_step_count"]
         else:
+            # Old checkpoint without scheduler state: fast-forward
             self.scheduler.step_count = self.global_step
         # Recompute LR from restored step
         for pg, base_lr in zip(self.optimizer.param_groups, self.scheduler.base_lrs):
@@ -328,4 +395,5 @@ class DynaCLIPTrainer:
                 progress = min(progress, 1.0)
                 factor = 0.5 * (1 + np.cos(np.pi * progress))
             pg["lr"] = max(base_lr * factor, self.scheduler.min_lr)
-        logger.info(f"Loaded checkpoint from step {self.global_step}")
+        logger.info(f"Loaded checkpoint from step {self.global_step}, "
+                    f"scheduler at step {self.scheduler.step_count}")

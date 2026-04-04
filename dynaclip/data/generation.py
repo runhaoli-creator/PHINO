@@ -240,6 +240,67 @@ def get_material_for_category(category: str) -> str:
 
 
 # ==========================================================================
+# Multi-material mapping (v2): categories can map to multiple materials
+# with probability weights. This breaks the deterministic
+# category→material→physics confound identified in the P0-1 critique.
+# ==========================================================================
+CATEGORY_TO_MATERIALS_PROB: Dict[str, Dict[str, float]] = {}
+
+def _build_multi_material_mapping():
+    """Build probabilistic multi-material mapping from base 1-to-1 mapping.
+
+    Rules:
+    1. Primary material gets 50% probability
+    2. 2-3 secondary materials get remaining 50%, weighted by physical plausibility
+    3. Every category can potentially have any material via a small "surprise" weight
+    """
+    # Define material compatibility groups (materials that are physically plausible
+    # alternatives for objects typically made of the primary material)
+    MATERIAL_ALTERNATES = {
+        "metal": ["rubber_plastic", "glass_ceramic", "wood"],
+        "wood": ["rubber_plastic", "metal", "paper_light"],
+        "fabric": ["rubber_plastic", "paper_light", "animal"],
+        "glass_ceramic": ["metal", "rubber_plastic", "stone_heavy"],
+        "rubber_plastic": ["metal", "glass_ceramic", "wood"],
+        "food_organic": ["rubber_plastic", "paper_light", "fabric"],
+        "paper_light": ["fabric", "food_organic", "rubber_plastic"],
+        "animal": ["rubber_plastic", "fabric", "food_organic"],
+        "stone_heavy": ["metal", "glass_ceramic", "wood"],
+        "default": ["rubber_plastic", "metal", "wood"],
+    }
+
+    for category, primary_material in CATEGORY_TO_MATERIAL.items():
+        alternates = MATERIAL_ALTERNATES.get(primary_material, ["default"])
+        prob_map = {primary_material: 0.50}
+        remaining = 0.50
+        n_alt = len(alternates)
+        for i, alt in enumerate(alternates):
+            # Decreasing weight for less likely alternates
+            w = remaining * (0.5 ** (i + 1)) if i < n_alt - 1 else remaining
+            prob_map[alt] = w
+            remaining -= w
+        CATEGORY_TO_MATERIALS_PROB[category] = prob_map
+
+_build_multi_material_mapping()
+
+
+def sample_material_for_category(category: str, rng: np.random.Generator) -> str:
+    """Sample a material type probabilistically for a given category.
+
+    Unlike get_material_for_category (deterministic 1-to-1), this allows
+    the same category to produce different material types across samples,
+    breaking the category→physics confound.
+    """
+    prob_map = CATEGORY_TO_MATERIALS_PROB.get(
+        category, {"default": 1.0}
+    )
+    materials = list(prob_map.keys())
+    probs = np.array(list(prob_map.values()))
+    probs = probs / probs.sum()  # normalize
+    return str(rng.choice(materials, p=probs))
+
+
+# ==========================================================================
 # Physical property configuration
 # ==========================================================================
 @dataclass
@@ -254,9 +315,18 @@ class PhysicsConfig:
         self.dynamic_friction = 0.8 * self.static_friction
 
     @staticmethod
-    def sample_for_category(category: str, rng: np.random.Generator) -> "PhysicsConfig":
-        """Sample physics from category-appropriate material prior."""
-        material = get_material_for_category(category)
+    def sample_for_category(category: str, rng: np.random.Generator,
+                            multi_material: bool = True) -> "PhysicsConfig":
+        """Sample physics from category-appropriate material prior.
+
+        If multi_material=True (v2), samples material probabilistically
+        to break the deterministic category→physics confound.
+        If multi_material=False (legacy), uses the 1-to-1 mapping.
+        """
+        if multi_material:
+            material = sample_material_for_category(category, rng)
+        else:
+            material = get_material_for_category(category)
         prior = MATERIAL_PRIORS[material]
         mass = rng.uniform(*prior["mass"])
         sf = rng.uniform(*prior["static_friction"])

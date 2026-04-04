@@ -1,0 +1,56 @@
+# DynaCLIP v2 Pre-training Configuration
+# Fixes applied:
+#   1. hard_neg_ratio=0, hard_pos_ratio=0 (remove hard mining, +22% gain from ablation)
+#   2. loss=pairwise_physics (actual pairwise physics distances, not geometric mean)
+#   3. wiseft_alpha=0.1 (feature-space regularization toward frozen DINOv2)
+#   4. Multi-material categories (enabled by regenerated data)
+#   5. PairwisePhysicsRnCLoss (theoretically grounded soft contrastive with real physics)
+
+# Model
+model:
+  backbone: "dinov2_vitb14"
+  embed_dim: 512
+  freeze_backbone: false
+  unfreeze_last_n_blocks: -1  # -1 = all unfrozen
+  gradient_checkpointing: true
+
+# Loss: PairwisePhysicsRnCLoss (uses actual pairwise physics vectors)
+loss:
+  name: "pairwise_physics"
+  temperature: 0.07
+  similarity_temperature: 0.1
+  learnable_temperature: true
+  physics_sigma: 2.0
+
+# Training (2 GPU DDP on GPUs 4,5: effective batch = 512 * 2 = 1024)
+training:
+  backbone_lr: 1.0e-5
+  head_lr: 1.0e-3
+  weight_decay: 0.05
+  warmup_steps: 333
+  total_steps: 20000
+  batch_size: 1024          # Total across all GPUs (1024/2 = 512 per GPU)
+  grad_accum_steps: 1       # Effective batch = 1024
+  use_bf16: true
+  wiseft_alpha: 0.1         # WiSE-FT feature regularization
+
+# Data: NO hard mining (100% random pairs)
+data:
+  data_dir: "data_cache/dynaclip_v2_data"
+  num_pairs: 500000
+  hard_neg_ratio: 0.0       # Fix 1: removed hard mining
+  hard_pos_ratio: 0.0       # Fix 1: removed hard mining
+  num_workers: 8
+
+# Logging
+logging:
+  log_every: 50
+  eval_every: 2000
+  save_every: 2000
+  use_wandb: false
+  project_name: "dynaclip_v2"
+
+# Output
+output:
+  checkpoint_dir: "checkpoints/pretrain_v2"
+  log_dir: "logs/pretrain_v2"

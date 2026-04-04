@@ -2,10 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="dynaclip",
-    version="1.0.0",
+    version="0.1.0",
     description="DynaCLIP: Physics-Grounded Visual Representations via Dynamics Contrastive Learning",
-    author="Zhengtao Yao",
-    url="https://github.com/zhengtaoyao/DynaCLIP",
+    author="DynaCLIP Team",
     packages=find_packages(),
     python_requires=">=3.10",
     install_requires=[
