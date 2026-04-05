@@ -7,6 +7,10 @@ Supports multi-GPU training via torchrun.
 Usage:
   Single GPU:  python scripts/pretrain.py --config configs/pretrain.yaml
   Multi-GPU:   torchrun --nproc_per_node=2 scripts/pretrain.py --config configs/pretrain.yaml
+  With overrides:
+    torchrun --nproc_per_node=4 scripts/pretrain.py --config configs/pretrain_v3.yaml \
+        training.total_steps=10000 data.data_dir=data_cache/dynaclip_v3_random \
+        output.checkpoint_dir=checkpoints/ablation_random
 """
 
 import argparse
@@ -24,12 +28,47 @@ from dynaclip.utils.helpers import setup_logging, set_seed, setup_distributed, c
 logger = logging.getLogger(__name__)
 
 
+def apply_config_overrides(cfg: dict, overrides: list) -> dict:
+    """Apply dot-notation config overrides from CLI args.
+
+    Examples:
+      training.total_steps=10000 -> cfg["training"]["total_steps"] = 10000
+      data.data_dir=data_cache/foo -> cfg["data"]["data_dir"] = "data_cache/foo"
+    """
+    for override in overrides:
+        if "=" not in override:
+            continue
+        key, value = override.split("=", 1)
+        keys = key.split(".")
+
+        # Auto-cast value
+        try:
+            value = int(value)
+        except ValueError:
+            try:
+                value = float(value)
+            except ValueError:
+                if value.lower() == "true":
+                    value = True
+                elif value.lower() == "false":
+                    value = False
+                # else keep as string
+
+        # Navigate and set
+        d = cfg
+        for k in keys[:-1]:
+            d = d.setdefault(k, {})
+        d[keys[-1]] = value
+        logger.info(f"Config override: {key} = {value}")
+    return cfg
+
+
 def main():
     parser = argparse.ArgumentParser(description="DynaCLIP Pre-training")
     parser.add_argument("--config", type=str, default="configs/pretrain.yaml")
     parser.add_argument("--resume", type=str, default=None, help="Resume from checkpoint")
     parser.add_argument("--seed", type=int, default=42)
-    args = parser.parse_args()
+    args, extra_args = parser.parse_known_args()
 
     # Setup distributed
     rank, local_rank, world_size = setup_distributed()
@@ -38,9 +77,10 @@ def main():
     setup_logging("INFO", "logs/pretrain.log", rank=rank)
     set_seed(args.seed + rank)
 
-    # Load config
+    # Load config and apply CLI overrides
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
+    cfg = apply_config_overrides(cfg, extra_args)
 
     logger.info("=== DynaCLIP Pre-training ===")
     logger.info(f"World size: {world_size}, Rank: {rank}, Local rank: {local_rank}")

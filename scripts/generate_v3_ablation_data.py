@@ -17,7 +17,6 @@ import logging
 import time
 import sys
 import argparse
-from copy import deepcopy
 
 import numpy as np
 
@@ -130,7 +129,7 @@ def main():
     PhysicsConfig.sample_for_category = original_sample
 
     elapsed = (time.time() - t0) / 60
-    logger.info(f"Done: {args.variant} in {elapsed:.1f} min → {output_dir}")
+    logger.info(f"Done: {args.variant} in {elapsed:.1f} min -> {output_dir}")
 
 
 if __name__ == "__main__":

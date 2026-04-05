@@ -173,9 +173,10 @@ class DynaCLIPContrastiveDataset(Dataset):
     def _get_trajectory(self, idx: int) -> np.ndarray:
         """Get trajectory fingerprint for an entry, with caching.
 
-        First checks if a precomputed fingerprint .npz exists on disk.
-        If not, computes it on the fly using the analytical physics engine.
-        Results are cached in memory to avoid redundant computation.
+        Three-level lookup:
+          1. In-memory cache (instant)
+          2. Precomputed fingerprint .npz on disk (fast)
+          3. On-the-fly computation via analytical physics engine (~10ms)
         """
         if not hasattr(self, '_traj_cache'):
             self._traj_cache = {}
@@ -193,10 +194,8 @@ class DynaCLIPContrastiveDataset(Dataset):
             self._traj_cache[idx] = traj
             return traj
 
-        # Compute on the fly
-        from dynaclip.data.generation import (
-            PhysicsConfig, DIAGNOSTIC_ACTIONS,
-        )
+        # Compute on the fly using analytical physics engine
+        from dynaclip.data.generation import PhysicsConfig, DIAGNOSTIC_ACTIONS
         m = self.metadata[idx]
         physics = PhysicsConfig(
             mass=m["mass"],
@@ -217,7 +216,6 @@ class DynaCLIPContrastiveDataset(Dataset):
         Uses the analytical physics engine to generate trajectories for both
         entries and computes L2-based similarity. This replaces the old
         parameter-distance proxy with actual trajectory similarity.
-        Trajectories are cached in memory for efficiency.
         """
         from dynaclip.data.generation import compute_dynamics_similarity_l2
         traj_i = self._get_trajectory(i)

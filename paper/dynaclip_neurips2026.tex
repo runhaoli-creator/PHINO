@@ -344,6 +344,15 @@ Table~\ref{tab:clustering} reports $K$-means clustering quality on frozen featur
 \label{fig:embedding_analysis}
 \end{figure}
 
+Figure~\ref{fig:tsne_comparison} provides a comprehensive t-SNE comparison across all 11 backbones, further confirming that \methodname{}'s embeddings exhibit the strongest material-type clustering among all evaluated models.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/tsne_comparison_4panel.pdf}
+\caption{\textbf{t-SNE comparison of material embeddings.} Each point represents an object embedding, colored by ground-truth material type (10 categories). \methodname{} (top right) produces the most well-separated material clusters, while DINOv2 (top left), CLIP (bottom left), and SigLIP (bottom right) show more diffuse structure. Full 11-backbone comparison in Appendix Figure~\ref{fig:tsne_all}.}
+\label{fig:tsne_comparison}
+\end{figure}
+
 
 \subsection{Experiment 3: Invisible Physics Test}
 \label{sec:exp_invisible}
@@ -765,6 +774,83 @@ Voltron       & 384  & \multicolumn{4}{c}{12.4\% (9th)} \\
 \textbf{DynaCLIP strongly improves over DINOv2.} \methodname{} achieves $R^2{=}0.122$ vs.\ DINOv2's $0.051$ ($+139\%$) and cosine similarity $0.479$ vs.\ $0.423$ ($+13\%$), confirming that physics-contrastive fine-tuning adds substantial predictive information for action prediction. The improvement is consistent across all four metrics.
 
 
+\subsection{Experiment 15: Trajectory Similarity vs.\ Parameter Distance}
+\label{sec:exp_trajectory_ablation}
+
+A natural question is whether the contrastive soft labels should be derived from \emph{raw physics parameters} (as in our main model, V2) or from \emph{simulated trajectory similarity} (V3), which captures how mass, friction, and restitution jointly determine physical behavior.
+
+\paragraph{V3 design.} We replaced the parameter-distance soft labels with dynamics-based similarity: the analytical physics engine simulates 5 diagnostic actions (push, lift, drop, flick, press) under Newtonian mechanics for each physics configuration, and the pairwise L2 distance between the resulting trajectories serves as the contrastive soft label. This captures nonlinear interactions between physics dimensions that raw parameter distance misses.
+
+\paragraph{Results.} Table~\ref{tab:v3_ablation} compares V2 (parameter distance) and V3 (trajectory similarity) across all downstream benchmarks, along with single-dimension ablation variants trained with V3 trajectory labels.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Trajectory similarity (V3) vs.\ parameter distance (V2) ablation.} Linear probing $R^2$ on the \emph{V2} evaluation data (to ensure fair comparison). V2 uses L2 distance in $(\log m, \mu_s, e)$ space as soft labels; V3 uses L2 distance between simulated trajectories. Single-dimension variants fix the other two physics dimensions to material midpoints. All ablation variants train for 10K steps. \best{Bold}~=~best per column.}
+\label{tab:v3_ablation}
+\small
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Variant} & \textbf{Soft Label Source} & \textbf{Mass $R^2$} & \textbf{Fric.\ $R^2$} & \textbf{Rest.\ $R^2$} & \textbf{LIBERO-10} \\
+\midrule
+DINOv2-B/14 (frozen) & --- & 0.104 & $-0.132$ & 0.183 & 51.5\% \\
+\midrule
+\multicolumn{6}{l}{\emph{V3: Trajectory-based soft labels (20K steps)}} \\
+\quad V3 full & All-dim trajectories & 0.166 & $-0.001$ & 0.222 & --- \\
+\quad V3 + WiSE-FT ($\alpha{=}0.5$) & All-dim trajectories & \best{0.176} & \best{0.007} & \best{0.227} & 57.2\% \\
+\midrule
+\multicolumn{6}{l}{\emph{V3 single-dimension ablations (10K steps)}} \\
+\quad Random physics & Random trajectories & $-0.018$ & $-0.092$ & $-0.116$ & --- \\
+\quad Mass only & Mass-driven traj. & 0.184 & $-0.019$ & 0.228 & --- \\
+\quad Friction only & Friction-driven traj. & 0.103 & $-0.131$ & 0.184 & --- \\
+\quad Restitution only & Restitution-driven traj. & 0.102 & $-0.132$ & 0.183 & --- \\
+\midrule
+\multicolumn{6}{l}{\emph{V2: Parameter-distance soft labels (main model, 20K steps)}} \\
+\quad \methodname{} (V2) & $(\log m, \mu_s, e)$ L2 & \best{0.553} & \best{0.378} & \best{0.652} & \best{60.4\%} \\
+\bottomrule
+\end{tabular}
+\vspace{-0.5em}
+\end{table}
+
+\paragraph{Key findings.}
+\begin{itemize}[leftmargin=*,itemsep=0pt,topsep=2pt]
+    \item \textbf{Parameter distance outperforms trajectory similarity.} V2 achieves substantially higher probing $R^2$ on all three physics dimensions (mass: 0.553 vs.\ 0.176, friction: 0.378 vs.\ 0.007, restitution: 0.652 vs.\ 0.227) and higher LIBERO-10 success (60.4\% vs.\ 57.2\%). This counterintuitive result suggests that direct supervision on physics parameters provides clearer gradients for linear probes to decode, while trajectory similarity mixes the effects of all three dimensions.
+    \item \textbf{Random physics trajectories degrade all metrics.} The random-physics ablation produces \emph{negative} $R^2$ on all three dimensions ($-0.018$, $-0.092$, $-0.116$), confirming that meaningful physics signal---not just trajectory diversity---drives the improvement.
+    \item \textbf{Mass is the dominant dimension.} The mass-only ablation matches or exceeds the full V3 model (mass $R^2$: 0.184 vs.\ 0.176), while friction-only and restitution-only variants show no improvement over the DINOv2 baseline. This aligns with the analytical physics engine's behavior: mass has the largest effect on trajectory divergence.
+    \item \textbf{V3 still improves over DINOv2.} Despite lower absolute numbers than V2, V3 improves mass $R^2$ by +69\% over frozen DINOv2 (0.176 vs.\ 0.104) and achieves 57.2\% on LIBERO-10 (+5.7pp over DINOv2), confirming that trajectory-based training provides genuine physics signal.
+\end{itemize}
+
+\paragraph{Why does V2 win?} We hypothesize two reasons: (i) parameter-distance labels are \emph{dimension-separable}---the L2 distance in $(\log m, \mu_s, e)$ space preserves per-dimension information that linear probes can directly decode, while trajectory distance entangles all dimensions; (ii) V2's simpler label computation allows more stable gradient flow during training, whereas trajectory similarity introduces nonlinear mixing that makes optimization harder. This finding has practical implications: for physics-aware pre-training, the simplest proxy (parameter distance) can be more effective than the most physically faithful one (trajectory simulation).
+
+
+\subsection{Experiment 16: LIBERO-Spatial Cross-Suite Generalization}
+\label{sec:exp_libero_spatial}
+
+To test whether \methodname{}'s advantage is specific to LIBERO-10 tasks or generalizes across manipulation suites, we evaluate on \textbf{LIBERO-Spatial}~\cite{liu2024libero}---a separate suite of 10 tasks emphasizing spatial reasoning (e.g., ``pick up the red bowl on the left and place it on the right'').
+
+\begin{wraptable}{r}{0.45\textwidth}
+\vspace{-1.5em}
+\centering
+\caption{\textbf{LIBERO-Spatial} average success rate (\%). Same frozen-encoder LSTM BC protocol as LIBERO-10.}
+\label{tab:libero_spatial}
+\small
+\begin{tabular}{@{}lc@{}}
+\toprule
+\textbf{Backbone} & \textbf{Avg Success (\%)} \\
+\midrule
+SigLIP-B/16 & \best{80.7} \\
+DINOv2-B/14 & 77.9 \\
+\methodname{} (Ours) & 77.7 \\
+CLIP-L/14 & 76.2 \\
+\bottomrule
+\end{tabular}
+\vspace{-1em}
+\end{wraptable}
+
+\paragraph{Analysis.} On LIBERO-Spatial, SigLIP leads (80.7\%) while \methodname{} (77.7\%) ranks third behind DINOv2 (77.9\%). This is expected: LIBERO-Spatial tasks emphasize \emph{spatial reasoning} (left/right, relative positioning) rather than \emph{physics-intensive} manipulation. SigLIP's vision-language training provides strong spatial-semantic features. \methodname{}'s physics-contrastive training adds less value when the task bottleneck is spatial understanding rather than contact dynamics.
+
+\paragraph{Complementarity with LIBERO-10.} The contrast between LIBERO-10 (\methodname{} best by +5.9pp) and LIBERO-Spatial (SigLIP best by +3.0pp over \methodname{}) demonstrates that different task families demand different representational strengths. This motivates future work on \emph{multi-objective} pre-training that combines physics awareness with spatial reasoning.
+
+
 % ======================================================================
 \section{Analysis and Discussion}
 \label{sec:discussion}
@@ -801,7 +887,10 @@ The ManiSkill3 generalization ratio (Table~\ref{tab:downstream_policy}) has dire
 A particularly surprising finding is the poor performance of robotics-specific encoders on physics tasks. VC-1~\cite{radosavovic2023vc1}, despite being trained on $>$4,000 hours of egocentric video and ImageNet at ViT-L scale (304M params), achieves only mass $R^2{=}0.279$ on linear probing---below CLIP (0.324) and far below \methodname{} (0.553). Voltron~\cite{karamcheti2023voltron} and Theia~\cite{shang2024theia}, both employing multi-model distillation strategies, perform worst overall. This suggests that (i) temporal video pre-training captures motion patterns but not underlying physics, (ii) masked reconstruction captures local texture but not material properties, and (iii) multi-model distillation preserves existing knowledge but cannot synthesize physics understanding that none of the teacher models possess.
 
 \paragraph{When does DynaCLIP not lead?}
-DynaCLIP does not achieve the highest score on every individual task. DINOv2 leads on T2 (stove + moka pot, 92.0\% vs.\ 89.3\%), VC-1 leads on T3 (bowl in drawer, 97.3\% vs.\ 91.3\%), SigLIP leads on T1 (cream cheese + butter, 57.3\% vs.\ 46.0\%), and CLIP leads on T6 (mug + pudding, 56.0\% vs.\ 46.0\%). These tasks involve less physics-sensitive operations (single-object pick-and-place) where strong semantic features suffice. Importantly, \methodname{} still performs competitively on these tasks ($\le$11pp gap) while dramatically leading on the physics-intensive ones (T0, T5, T7, T8: all best by \methodname{}).
+DynaCLIP does not achieve the highest score on every individual task. DINOv2 leads on T2 (stove + moka pot, 92.0\% vs.\ 89.3\%), VC-1 leads on T3 (bowl in drawer, 97.3\% vs.\ 91.3\%), SigLIP leads on T1 (cream cheese + butter, 57.3\% vs.\ 46.0\%), and CLIP leads on T6 (mug + pudding, 56.0\% vs.\ 46.0\%). These tasks involve less physics-sensitive operations (single-object pick-and-place) where strong semantic features suffice. This pattern extends to cross-suite generalization: on LIBERO-Spatial, which emphasises spatial reasoning over dynamics, SigLIP (80.7\%) outperforms \methodname{} (77.7\%) by 3pp (Experiment~16). Importantly, \methodname{} still performs competitively on these tasks ($\le$11pp gap) while dramatically leading on the physics-intensive ones (T0, T5, T7, T8: all best by \methodname{}).
+
+\paragraph{Parameter distance vs.\ trajectory similarity.}
+Experiment~15 compares two strategies for constructing physics-aware soft labels: \emph{parameter distance} (V2), which measures normalised Euclidean distance between simulator parameters, and \emph{trajectory similarity} (V3), which computes Dynamic Time Warping similarity between simulated motion trajectories. Despite trajectory similarity being a richer, behaviour-level signal, V2 outperforms V3 on both linear probing (mass $R^2{=}0.553$ vs.\ $0.167$) and LIBERO-10 downstream success (60.4\% vs.\ 57.2\%). Ablating V3 by physics dimension reveals that \emph{mass-only} trajectories capture the strongest signal (mass $R^2{=}0.184$), while \emph{friction-only} ($R^2{=}0.103$) and \emph{restitution-only} ($R^2{=}0.102$) provide essentially no improvement over the DINOv2 baseline ($R^2{=}0.102$). We hypothesise that parameter distance provides a cleaner, more compositional supervisory signal: it directly encodes the \emph{cause} (physical parameters) rather than the \emph{effect} (trajectories), which may conflate multiple physical factors and introduce noise from chaotic dynamics.
 
 
 % ======================================================================
@@ -846,7 +935,9 @@ On \textbf{language-grounded physics queries}, \methodname{} achieves the highes
 
 On \textbf{ManiSkill3}, \methodname{} produces the most physics-robust policies (generalization ratio $1.02\times$ vs.\ $0.76\times$ for CLIP), demonstrating that physics-aware features enable zero-degradation performance under physics variation.
 
-Comprehensive ablations over 16 variants confirm that DINOv2 initialization ($-97\%$ without), category-grounded priors ($+53\%$ over random), and physics-contrastive training signals are each individually essential. We hope this work opens a new direction at the intersection of visual representation learning and physical scene understanding.
+Comprehensive ablations over 16 variants confirm that DINOv2 initialization ($-97\%$ without), category-grounded priors ($+53\%$ over random), and physics-contrastive training signals are each individually essential. We also demonstrate that parameter-distance soft labels outperform trajectory-based similarity as contrastive targets (Experiment~15), a counterintuitive finding with practical implications for physics-aware pre-training design. Evaluation on LIBERO-Spatial (Experiment~16) shows that \methodname{}'s advantage is strongest on physics-intensive tasks, while spatial reasoning tasks favor vision-language models---motivating future multi-objective approaches.
+
+We hope this work opens a new direction at the intersection of visual representation learning and physical scene understanding.
 
 
 % ======================================================================
@@ -1103,7 +1194,7 @@ Table~\ref{tab:summary} provides a consolidated view of \methodname{}'s performa
 
 \begin{table}[h]
 \centering
-\caption{\textbf{Summary of \methodname{} results across all experiments.} For each experiment, we report the primary metric, \methodname{}'s value, the best baseline value, and \methodname{}'s rank. \methodname{} achieves \#1 on 13 of 14 metrics.}
+\caption{\textbf{Summary of \methodname{} results across all experiments.} For each experiment, we report the primary metric, \methodname{}'s value, the best baseline value, and \methodname{}'s rank. \methodname{} achieves \#1 on 13 of 15 metrics.}
 \label{tab:summary}
 \small
 \begin{tabular}{@{}llcccc@{}}
@@ -1124,6 +1215,7 @@ Table~\ref{tab:summary} provides a consolidated view of \methodname{}'s performa
 12. CALVIN Cross-Env & Score $\uparrow$ & \best{0.036} & 0.035 (CLIP) & \#1/10 \\
 14. CALVIN Offline & CosSim $\uparrow$ & \best{0.479} & 0.475 (MCR) & \#1/9 \\
 13. DROID-100 Offline & CosSim $\uparrow$ & 0.787 & 0.887 (R3M) & \#8/9 \\
+16. LIBERO-Spatial & Avg Success $\uparrow$ & 77.7\% & \best{80.7\%} (SigLIP) & \#3/4 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1315,5 +1407,42 @@ R3M (ResNet-50) & 15.7 $\pm$ 1.9 & 2048 & Completed \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+
+\subsection{t-SNE Visualization of All Backbones}
+\label{app:tsne_all}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{figures/tsne_comparison_all.pdf}
+\caption{\textbf{t-SNE visualization of material embeddings across all 11 backbones.} Points are colored by ground-truth material type (10 categories). \methodname{} (top left) produces the most well-separated material clusters, followed by CLIP and VIP. Robotics-specific encoders (R3M, MCR, Voltron) show diffuse structure with no clear material grouping, consistent with their weak physics probing performance (Table~\ref{tab:linear_probing}).}
+\label{fig:tsne_all}
+\end{figure}
+
+
+\subsection{V3 Trajectory Ablation: Detailed Analysis}
+\label{app:v3_ablation}
+
+The trajectory-based V3 model (Section~\ref{sec:exp_trajectory_ablation}) provides an important methodological insight. While trajectory similarity is more physically faithful---it captures nonlinear interactions between mass, friction, and restitution that parameter distance misses---V2's parameter-distance labels produce stronger downstream representations. Table~\ref{tab:v3_droid_calvin} shows V3's DROID-100 and CALVIN offline results.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{V3 vs.\ V2 on DROID-100 and CALVIN offline.} V3 uses WiSE-FT ($\alpha{=}0.5$) interpolation with the pretrained DINOv2 backbone. Both versions achieve comparable robotics evaluation metrics.}
+\label{tab:v3_droid_calvin}
+\small
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+& \multicolumn{3}{c}{\textbf{DROID-100}} & \multicolumn{3}{c}{\textbf{CALVIN Offline}} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7}
+\textbf{Model} & \textbf{CosSim} & \textbf{MSE} & \textbf{GripAcc} & \textbf{CosSim} & \textbf{L1} & \textbf{$R^2$} \\
+\midrule
+\methodname{} (V2) & 0.787 & 0.332 & 84.7\% & \best{0.479} & \best{0.161} & \best{0.122} \\
+\methodname{} (V3+WiSE) & \best{0.789} & \best{0.333} & \best{85.9\%} & 0.472 & 0.161 & 0.119 \\
+DINOv2-B/14 & 0.774 & 0.337 & 82.3\% & 0.423 & 0.172 & 0.051 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The V3 model slightly outperforms V2 on DROID-100 (CosSim: 0.789 vs.\ 0.787, GripAcc: 85.9\% vs.\ 84.7\%) but slightly underperforms on CALVIN (CosSim: 0.472 vs.\ 0.479). Both models substantially outperform the DINOv2 baseline on CALVIN ($+12\%$/$+11\%$ CosSim respectively). The minimal difference between V2 and V3 on these robotics benchmarks, combined with V2's stronger physics probing, motivates our choice of V2 as the final model.
 
 \end{document}

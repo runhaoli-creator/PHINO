@@ -1,227 +1,330 @@
-# DynaCLIP: Physics-Grounded Visual Representations via Dynamics Contrastive Learning
-
-Official implementation of **DynaCLIP**, a self-supervised visual representation learning framework that embeds *implicit physical dynamics* into visual encoders through contrastive pre-training with analytically computed physics priors.
+# DynaCLIP: Physics-Grounded Visual Representations for Robotic Manipulation via Dynamics Contrastive Learning
 
 ## Overview
 
-Standard visual encoders (CLIP, DINOv2, etc.) learn representations optimized for semantic similarity — objects that *look alike* are mapped nearby in embedding space. However, for embodied AI and robotics, we need representations that capture **how objects behave physically**: a metal sphere and a rubber ball may look similar, but their dynamics (bouncing, rolling, deformation) differ fundamentally.
+DynaCLIP learns visual representations where embedding similarity reflects **physical dynamics similarity** rather than mere visual similarity. Two objects that look identical but have different masses, friction coefficients, or restitution values will receive distinct embeddings—because they *behave* differently when a robot interacts with them.
 
-DynaCLIP bridges this gap by:
-1. **Category-Grounded Physics Priors**: Mapping 345 DomainNet visual categories to 10 material archetypes (metal, wood, fabric, glass/ceramic, rubber/plastic, etc.), each with analytical physical parameters (mass, friction, restitution, deformability).
-2. **Analytical Physics Engine**: Computing dynamics trajectories (projectile motion, surface sliding, collision, pendulum, deformation) from first principles — no simulator needed.
-3. **Soft InfoNCE Contrastive Loss**: Using continuous dynamics similarity as soft labels (not binary pos/neg), with a learnable temperature parameter.
-4. **DINOv2 Fine-tuning**: Unfreezing a DINOv2-ViT-B/14 backbone during pre-training so gradients from the physics-aware loss reshape the entire feature space.
-
-## Model Architecture
+### Key Idea
 
 ```
-Input Image (224×224)
-        │
-        ▼
-┌──────────────────────┐
-│  DINOv2-ViT-B/14     │   86M params, UNFROZEN
-│  (Backbone)           │
-└──────────┬───────────┘
-           │
-     ┌─────┴─────┐
-     │           │
-  CLS Token   Mean-Pool
-  (768-d)    (768-d)
-     │           │
-     └─────┬─────┘
-           │
-    Concatenate → 1536-d
-           │
-           ▼
-┌──────────────────────┐
-│  Projection Head      │   (discarded after pre-training)
-│  Linear(1536, 768)    │
-│  LayerNorm → GELU     │
-│  Linear(768, 512)     │
-│  L2 Normalize         │
-└──────────┬───────────┘
-           │
-           ▼
-    512-d Unit-Norm Embedding
+Traditional CLIP:  "looks similar" → close embeddings
+DynaCLIP:          "behaves similarly" → close embeddings
 ```
 
-**Total parameters**: 88.2M (86M backbone + 2.2M projection head)
+We fine-tune a DINOv2-ViT-B/14 backbone with a **Soft InfoNCE** contrastive loss where the soft targets come from **dynamics fingerprint similarity** (computed via DTW over diagnostic manipulation trajectories in ManiSkill3).
 
-After pre-training, the projection head is discarded and the backbone serves as a general-purpose physics-aware visual encoder outputting 1536-d features.
+---
 
 ## Project Structure
 
 ```
 DynaCLIP/
-├── dynaclip/
-│   ├── models/
-│   │   ├── dynaclip.py        # DynaCLIPModel, DynaCLIPEncoder, ProjectionHead
-│   │   └── backbones.py       # BackboneWrapper + backbone registry
-│   ├── losses/
-│   │   └── contrastive.py     # SoftInfoNCELoss with learnable temperature
-│   ├── trainers/
-│   │   └── pretrain.py        # DynaCLIPTrainer + CosineWarmupScheduler
+├── dynaclip/                    # Main Python package
 │   ├── data/
-│   │   ├── generation.py      # AnalyticalPhysicsEngine + material priors
-│   │   ├── dataset.py         # DynaCLIPContrastiveDataset + dataloaders
-│   │   └── precompute.py      # DINOv2 embedding pre-computation
+│   │   ├── generation.py        # ManiSkill3 data generation, physics configs, dynamics fingerprints
+│   │   ├── dataset.py           # PyTorch datasets (contrastive, invisible physics, probe)
+│   │   └── precompute.py        # DINOv2 embedding pre-computation & hard pair mining
+│   ├── models/
+│   │   ├── dynaclip.py          # DynaCLIP model (DINOv2 + projection head)
+│   │   └── backbones.py         # 8 backbone registry (DINOv2-B/L, SigLIP, CLIP, R3M, VIP, MCR)
+│   ├── losses/
+│   │   └── contrastive.py       # Soft InfoNCE, Standard InfoNCE, Triplet, BYOL losses
+│   ├── trainers/
+│   │   ├── pretrain.py          # DynaCLIP pre-training (DDP, bf16, cosine warmup)
+│   │   └── diffusion_policy.py  # Diffusion Policy for downstream tasks
 │   ├── eval/
-│   │   ├── linear_probing.py  # Exp 1: Physics property linear probes
-│   │   ├── invisible_physics.py  # Exp 2: Same-appearance discrimination
-│   │   ├── world_model.py     # Exp 3: RSSM world model evaluation
-│   │   └── zero_shot.py       # Exp 5: Zero-shot physics inference
+│   │   ├── linear_probing.py    # Exp 1: Physics property linear probing
+│   │   ├── invisible_physics.py # Exp 2: Visually-identical pair discrimination
+│   │   ├── world_model.py       # Exp 3: RSSM world model prediction
+│   │   ├── downstream.py        # Exp 4: 6 manipulation benchmarks
+│   │   ├── zero_shot.py         # Exp 5: k-NN physics inference
+│   │   └── ablations.py         # 8 ablation studies
+│   ├── baselines/
+│   │   └── policies.py          # ACT, OpenVLA-OFT, Octo-Base, Dreamer-v3, TD-MPC2
+│   ├── analysis/
+│   │   └── visualize.py         # t-SNE/UMAP, Jacobian analysis, publication figures
 │   └── utils/
-│       └── helpers.py         # Logging, seeding, distributed utils
-├── configs/
-│   ├── pretrain.yaml          # Pre-training configuration
-│   ├── data_generation.yaml   # Data generation configuration
-│   └── evaluation.yaml        # Evaluation configuration
-├── scripts/
-│   ├── pretrain.py            # Training entry point
-│   ├── generate_data.py       # Data generation entry point
-│   └── evaluate.py            # Evaluation entry point
+│       └── helpers.py           # Logging, seeding, DDP utilities
+├── configs/                     # Hydra/YAML configuration files
+│   ├── pretrain.yaml
+│   ├── data_generation.yaml
+│   ├── diffusion_policy.yaml
+│   └── evaluation.yaml
+├── scripts/                     # Entry-point scripts
+│   ├── generate_data.py
+│   ├── pretrain.py
+│   ├── evaluate.py
+│   ├── run_ablations.py
+│   └── run_all.sh               # Master pipeline
 ├── tests/
-│   └── test_dynaclip.py       # Unit tests
-├── paper/
-│   ├── dynaclip_neurips2026.tex   # Full paper (NeurIPS 2026 format)
-│   └── neurips_2026.sty           # NeurIPS style file
-├── setup.py
+│   └── test_dynaclip.py         # Unit tests
 ├── requirements.txt
+├── setup.py
+├── setup_env.sh
 └── README.md
 ```
 
+---
+
 ## Installation
 
-### Requirements
-- Python ≥ 3.10
-- PyTorch ≥ 2.2.0 with CUDA support
-- 1+ GPU with ≥ 24GB VRAM (8× RTX PRO 6000 recommended for full training)
+### Prerequisites
+- Linux (Ubuntu 20.04+ recommended)
+- NVIDIA GPU with CUDA 12.1+
+- Conda (Miniconda or Anaconda)
 
 ### Setup
 
 ```bash
-# Clone the repository
-git clone git@github.com:zhengtaoyao/DynaCLIP.git
-cd DynaCLIP
-
-# Create conda environment
+# 1. Create conda environment
 conda create -n dynaclip python=3.10 -y
 conda activate dynaclip
 
-# Install PyTorch (adjust for your CUDA version)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# 2. Install PyTorch with CUDA 12.1
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-# Install DynaCLIP
+# 3. Install all dependencies
+cd DynaCLIP
+pip install -r requirements.txt
+
+# 4. Install DynaCLIP in editable mode
 pip install -e .
 
-# Or install from requirements
-pip install -r requirements.txt
+# Or simply run:
+bash setup_env.sh
 ```
+
+---
+
+## Architecture
+
+### DynaCLIP Model
+
+| Component | Details |
+|-----------|---------|
+| **Backbone** | DINOv2-ViT-B/14 (86M params) |
+| **Feature extraction** | CLS token ⊕ mean-pooled patch tokens → 1536d |
+| **Projection head** | Linear(1536→768) → LayerNorm → GELU → Linear(768→512) → L2-norm |
+| **Temperature** | Learnable, init=0.07 |
+| **Training** | Soft InfoNCE with dynamics similarity as soft targets |
+
+### Dynamics Fingerprint
+
+Each object configuration (geometry × texture × physics) receives a **dynamics fingerprint**: the concatenation of state trajectories from 5 standardized diagnostic actions:
+
+1. `push_x` — Push along X axis
+2. `push_y` — Push along Y axis  
+3. `grasp_lift_release` — Pick up and drop
+4. `lateral_flick` — Quick sideways flick
+5. `slow_press_down` — Gradual downward press
+
+Each trajectory: 50 timesteps × 13 dimensions (3 pos + 4 quat + 3 lin_vel + 3 ang_vel) at 20 Hz.
+
+### Similarity Metrics
+
+- **DTW** (default): Dynamic Time Warping via tslearn
+- **L2**: Normalized Euclidean distance
+- **MSE**: Mean squared error
+- **Velocity-DTW**: DTW on velocity channels only
+
+---
+
+## Visual Backbones (8 total)
+
+| Backbone | Source | Embedding Dim |
+|----------|--------|--------------|
+| **DynaCLIP** | Ours | 512 |
+| DINOv2-ViT-B/14 | `facebookresearch/dinov2` | 768 |
+| DINOv2-ViT-L/14 | `facebookresearch/dinov2` | 1024 |
+| SigLIP-ViT-B/16 | `google/siglip-base-patch16-224` | 768 |
+| CLIP-ViT-L/14 | `openai/clip-vit-large-patch14` | 768 |
+| R3M | `r3m` | 2048 |
+| VIP | `vip` | 1024 |
+| MCR | `mcr` | 512 |
+
+---
+
+## Policy Baselines (7 total)
+
+| Policy | Type | Details |
+|--------|------|---------|
+| **Diffusion Policy** (DynaCLIP) | Ours | DDPM train / DDIM-10 inference, 16-step action chunks |
+| Diffusion Policy (DINOv2) | Baseline | Same architecture, frozen DINOv2 encoder |
+| Diffusion Policy (R3M) | Baseline | Same architecture, frozen R3M encoder |
+| **ACT** | Baseline | CVAE + Transformer decoder |
+| **OpenVLA-OFT** | Baseline | Vision-Language-Action with orthogonal fine-tuning |
+| **Octo-Base** | Baseline | Transformer-based generalist policy |
+| **Dreamer-v3** | Baseline | Model-based RL with RSSM world model |
+| **TD-MPC2** | Baseline | Latent dynamics + Model Predictive Control |
+
+---
+
+## Experiments
+
+### Experiment 1: Physics Property Linear Probing
+
+Freeze each backbone → train linear heads to predict mass, friction, restitution.
+
+**Metrics:** R² per property, material classification accuracy  
+**Run:** `python scripts/evaluate.py --experiment linear_probing`
+
+### Experiment 2: Invisible Physics Discrimination
+
+500 visually-identical object pairs with different physics → test if embeddings can distinguish them.
+
+**Metrics:** Cosine similarity distributions, "heavier" classification accuracy, sensitivity  
+**Run:** `python scripts/evaluate.py --experiment invisible_physics`
+
+### Experiment 3: World Model Prediction
+
+Train RSSM world model (Dreamer-v3 style) on each backbone → test latent prediction quality.
+
+**Metrics:** Latent MSE at horizons t+1, t+5, t+10, t+20  
+**Run:** `python scripts/evaluate.py --experiment world_model`
+
+### Experiment 4: Downstream Policy Learning
+
+Train Diffusion Policy (and all baselines) on 6 manipulation benchmarks.
+
+**Benchmarks:**
+- LIBERO-10 (10 tasks, success rate)
+- LIBERO-Long (10 long-horizon tasks)
+- CALVIN (ABC→D, chain length metric)
+- ManiSkill3 (8 tasks, success rate)
+- Physics-Varying (OOD mass/friction, 30 episodes each)
+- RLBench-18 (18 tasks, multi-variation)
+
+**Run:** `python scripts/evaluate.py --experiment downstream`
+
+### Experiment 5: Zero-Shot Physics Inference
+
+Encode a library of known objects → use k-NN on new images to predict physics properties.
+
+**Metrics:** Mass/friction/restitution MAE, top-5 retrieval P@5  
+**Run:** `python scripts/evaluate.py --experiment zero_shot`
+
+---
+
+## Ablation Studies (8 total)
+
+| # | Ablation | What varies |
+|---|----------|-------------|
+| A1 | Similarity metric | DTW vs L2 vs MSE vs velocity-DTW |
+| A2 | Number of diagnostic actions | 1 → 5 actions |
+| A3 | Loss formulation | Soft InfoNCE vs InfoNCE vs Triplet vs BYOL |
+| A4 | Hard negative ratio | 0%, 10%, 20%, 30% (default), 50%, 70% |
+| A5 | Backbone initialization | DINOv2, SigLIP, CLIP, random |
+| A6 | Data scale | 10%, 25%, 50%, 75%, 100% of training data |
+| A7 | Property diversity | Mass-only, friction-only, restitution-only, all three |
+| A8 | Fine-tuning depth | Frozen, last 2 layers, last 4 layers, full fine-tune |
+
+**Run:** `python scripts/run_ablations.py`
+
+---
 
 ## Quick Start
 
-### 1. Generate Training Data
-
-DynaCLIP uses an analytical physics engine — no simulator installation needed.
+### Full Pipeline
 
 ```bash
-python scripts/generate_data.py \
-    --config configs/data_generation.yaml \
-    --output_dir data_cache/domainnet_physics \
-    --num_workers 8
+conda activate dynaclip
+cd DynaCLIP
+
+# Generate data (or use synthetic fallback for testing)
+python scripts/generate_data.py --num_geometries 50 --num_textures 5 --num_physics 100
+
+# Pre-compute DINOv2 embeddings & mine hard pairs
+python scripts/generate_data.py --precompute_only
+
+# Pre-train DynaCLIP (multi-GPU)
+torchrun --nproc_per_node=4 scripts/pretrain.py
+
+# Run all evaluations
+python scripts/evaluate.py --experiment all
+
+# Run ablations
+python scripts/run_ablations.py
 ```
 
-This generates contrastive pairs with dynamics similarity labels from DomainNet images.
+### Or run everything at once:
 
-### 2. Pre-train DynaCLIP
-
-**Single GPU:**
 ```bash
-python scripts/pretrain.py --config configs/pretrain.yaml
+bash scripts/run_all.sh
 ```
 
-**Multi-GPU (recommended):**
-```bash
-torchrun --nproc_per_node=8 scripts/pretrain.py \
-    --config configs/pretrain.yaml \
-    training.total_steps=30000 \
-    training.effective_batch_size=1280
+---
+
+## Configuration
+
+All configurations use YAML files in `configs/`. Key parameters:
+
+### Pre-training (`configs/pretrain.yaml`)
+```yaml
+model:
+  backbone: dinov2_vitb14
+  projection_dim: 512
+  unfreeze_last_n: 4
+
+training:
+  epochs: 100
+  batch_size: 256
+  lr_backbone: 1.0e-5
+  lr_head: 1.0e-3
+  warmup_steps: 500
+  loss: soft_infonce
+  hard_negative_ratio: 0.3
 ```
 
-Key training hyperparameters (from `configs/pretrain.yaml`):
-| Parameter | Value |
-|-----------|-------|
+### Data Generation (`configs/data_generation.yaml`)
+```yaml
+simulation:
+  num_geometries: 50
+  num_textures_per_geometry: 5
+  num_physics_per_config: 100
+  trajectory_steps: 50
+  control_freq: 20
+```
+
+---
+
+## Training Details
+
+| Hyperparameter | Value |
+|---------------|-------|
+| Optimizer | AdamW |
 | Backbone LR | 1e-5 |
 | Head LR | 1e-3 |
-| Weight Decay | 0.05 |
-| Warmup Steps | 500 |
-| Total Steps | 30,000 |
-| Effective Batch Size | 1,280 |
+| Weight decay | 0.01 |
+| Batch size | 256 |
+| Epochs | 100 |
+| Warmup steps | 500 |
+| Scheduler | Cosine annealing |
 | Precision | bf16 |
-| Temperature (init) | 0.07 (learnable) |
+| GPUs | 4× (DDP) |
 
-### 3. Evaluate
+---
 
-Run the full evaluation suite:
+## Testing
 
 ```bash
-python scripts/evaluate.py \
-    --config configs/evaluation.yaml \
-    --checkpoint checkpoints/dynaclip_best.pt
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test class
+python -m pytest tests/test_dynaclip.py::TestLosses -v
 ```
 
-Individual evaluations:
-
-```python
-from dynaclip.models import DynaCLIPModel, DynaCLIPEncoder
-from dynaclip.eval.linear_probing import PhysicsLinearProbing
-
-# Load pre-trained encoder (backbone only, no projection head)
-encoder = DynaCLIPEncoder.from_pretrained("checkpoints/dynaclip_best.pt")
-encoder.eval().cuda()
-
-# Run linear probing evaluation
-evaluator = PhysicsLinearProbing(encoder, feature_dim=1536)
-results = evaluator.evaluate(data_dir="data_cache/physics_probes", num_seeds=5)
-print(results)
-```
-
-## Evaluation Suite
-
-| Experiment | Script | Description |
-|-----------|--------|-------------|
-| **Exp 1**: Linear Probing | `eval/linear_probing.py` | 5 physics properties (mass, friction, restitution, density, elasticity) via linear probes |
-| **Exp 2**: Invisible Physics | `eval/invisible_physics.py` | Discriminate visually identical objects with different physical properties |
-| **Exp 3**: World Model | `eval/world_model.py` | RSSM world model: predict future states from DynaCLIP features |
-| **Exp 5**: Zero-Shot | `eval/zero_shot.py` | Zero-shot physics property inference on novel object categories |
-
-## Key Results
-
-**Physics Linear Probing** (5-property average R², 5 seeds):
-| Model | Mass | Friction | Restitution | Density | Elasticity | **Mean R²** |
-|-------|------|----------|-------------|---------|------------|-------------|
-| CLIP ViT-B/16 | 0.328 | 0.156 | 0.218 | 0.289 | 0.142 | 0.227 |
-| DINOv2 ViT-B/14 | 0.412 | 0.298 | 0.345 | 0.378 | 0.267 | 0.340 |
-| **DynaCLIP (Ours)** | **0.687** | **0.623** | **0.712** | **0.654** | **0.598** | **0.655** |
-
-**Downstream: LIBERO-10 Robotic Manipulation** (v4, 200 epochs, action chunking):
-| Backbone | Success Rate |
-|----------|-------------|
-| CLIP ViT-B/16 | 46.9% |
-| DINOv2 ViT-B/14 | 51.5% |
-| **DynaCLIP (Ours)** | **59.0%** |
+---
 
 ## Citation
 
 ```bibtex
-@inproceedings{yao2026dynaclip,
-  title={DynaCLIP: Physics-Grounded Visual Representations via Dynamics Contrastive Learning},
-  author={Yao, Zhengtao},
-  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
-  year={2026}
+@article{dynaclip2025,
+  title={DynaCLIP: Physics-Grounded Visual Representations for Robotic Manipulation via Dynamics Contrastive Learning},
+  year={2025}
 }
 ```
 
 ## License
 
-This project is released under the MIT License.
+MIT License

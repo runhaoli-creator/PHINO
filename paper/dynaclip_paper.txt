@@ -1,0 +1,145 @@
+[utf8]{inputenc}
+[T1]{fontenc}
+
+[margin=1in]{geometry}
+
+{DynaCLIP}
+{}
+{}
+{}
+{}
+{}
+
+Introduction
+
+Deploying robots in unstructured environments demands visual representations that go beyond recognizing what an object is or where it appears. A manipulation policy tasked with grasping a ceramic mug must produce markedly different forces, trajectories, and grasp widths than one handling a foam cup---even though both objects share the same semantic label ``cup.'' The distinction lies in their physical material properties: mass, surface friction, and elastic restitution, none of which are captured by existing large-scale visual encoders~.
+
+Recent work in embodied AI has made impressive strides toward general-purpose visual representations for robotics~. These approaches pre-train on egocentric video~, language-conditioned frames~, or video-language data from the Ego4D corpus~. While effective for downstream policy learning, they do not explicitly encode the physical material properties that determine an object's response to applied forces.
+
+In this paper, we ask: can we teach a visual encoder to predict how an object will behave physically, purely from its appearance? We answer affirmatively by introducing DynaCLIP, a contrastive pre-training framework that imbues DINOv2 features with physics-aware structure (Figure~).
+
+Our approach rests on a simple but powerful observation: object categories carry strong implicit priors over material properties. A  is almost always metal (high mass, low restitution); a  is brass (high density, moderate friction); a  is fabric (low mass, high friction). By mapping 345 DomainNet object categories to 10 material types---each with physically plausible parameter distributions---we avoid the need for expensive real-world measurement while still producing training signals that correlate visual appearance with physical behavior.
+
+Given an image and its category, DynaCLIP samples multiple physics configurations from the corresponding material prior, simulates their dynamics under standardized diagnostic actions using an analytical physics engine, and measures pairwise dynamics similarity. The resulting continuous similarity scores serve as soft targets for a symmetric InfoNCE loss, replacing the hard positive/negative assignments of standard contrastive learning. Images of objects with similar material properties are pulled together in embedding space proportionally to their dynamics similarity.
+
+We evaluate DynaCLIP on the DynaCLIP-Bench suite consisting of four experimental tracks:
+
+Our contributions are:
+
+Related Work
+
+Large-scale self-supervised visual encoders have become the default feature backbone in robotics. CLIP~ and SigLIP~ learn vision-language alignment from web data; DINOv2~ trains via self-distillation on curated images. While these encoders excel at semantic recognition, they are not optimized for downstream tasks that hinge on physical material properties.
+
+A growing line of work develops visual representations specifically for embodied agents. R3M~ combines time-contrastive learning, video-language alignment, and $l_1$ regularization on Ego4D video. VIP~ reformulates visual representations as value functions for reward specification. VC-1~ scales masked autoencoding (MAE) to a combined Ego4D + ImageNet corpus, producing a single ViT-L encoder that generalises across 17 CortexBench tasks including locomotion, navigation, and manipulation. Voltron~ augments masked autoencoding with language-conditioned objectives, showing improvements on 5 manipulation tasks in simulation.
+
+These methods exploit temporal structure and language, but none explicitly encodes physics parameters. DynaCLIP fills this gap by providing a training signal that captures how objects respond to forces, complementing the what and where captured by existing encoders.
+
+A separate body of work infers physical properties from visual observations. Intuitive Physics Networks~ predict block-tower stability from images. PhyDNet~ disentangles physical dynamics from residual information for video prediction. NeuroFluid~ estimates fluid properties from visual observations. The physics-informed neural network (PINN) paradigm~ embeds PDE constraints into network training.
+
+Unlike these works, which build task-specific prediction heads, DynaCLIP targets general-purpose representation learning: the physics-aware structure is injected into the feature backbone itself, enabling zero-shot transfer to novel objects and tasks.
+
+Standard contrastive learning~ treats each pair as binary (positive or negative). Soft-label extensions replace hard assignments with continuous similarity targets. SCL~ uses class labels as supervision. FlatNCE~ addresses gradient issues in large-batch InfoNCE. Our Soft InfoNCE loss is most closely related to the ordinal contrastive objectives in~, but uses dynamics simulation rather than augmentation similarity.
+
+Method
+
+Overview
+
+DynaCLIP comprises three stages (Figure~):
+
+Category-Grounded Material Priors
+
+We observe that an object's visual category provides a strong prior over its material composition. We manually assign each of the 345 DomainNet~ object categories to one of 10 material types:
+
+Each material type $m  $ defines a prior distribution over three physical parameters:
+
+where $ = (, , )$ denotes mass, static friction coefficient, and coefficient of restitution, respectively. For example, the  prior uses mass $ [2.0, 10.0]$~kg, friction $ [0.3, 0.6]$, and restitution $ [0.2, 0.5]$; the  prior uses mass $ [0.05, 0.5]$, friction $ [0.6, 0.95]$, and restitution $ [0.1, 0.3]$.
+
+For each of the $N{=}20{,}000$ images, we sample $K{=}5$ physics configurations from the category-appropriate material prior, yielding $100{,}000$ (image, physics) entries.
+
+Analytical Physics Engine
+
+Rather than running a full rigid-body simulator, we use closed-form analytical equations to compute the trajectory of an object under a standardised diagnostic action (unit horizontal impulse). Given physics parameters $ = (, , )$:
+
+where $v_0 = 1/$ (impulse response inversely proportional to mass), $g = 9.81$~m/s$^2$, and the vertical bounce height decays geometrically with coefficient $$. We discretize the trajectory at 50 timesteps (10 Hz over 5 seconds) and compute a 150-dimensional fingerprint $  ^{150}$ (50 timesteps $$ 3 channels: $x$, $y$, $v$).
+
+Dynamics Similarity
+
+Given two physics fingerprints $_i, _j$, we define a proxy dynamics similarity:
+
+where $_p$ is the range of property $p$ across the dataset and $w_p$ is a property-specific weight. This exponential similarity produces well-spread values (mean $ 0.55$, std $ 0.21$), providing informative gradients throughout training.
+
+Contrastive Pair Construction
+
+We construct $P{=}500{,}000$ training pairs using a three-way mining strategy:
+
+This strategy forces the model to go beyond visual similarity and learn the physics-relevant features.
+
+Soft InfoNCE Pre-Training
+
+We fine-tune a DINOv2-ViT-B/14 backbone $f_$ followed by a projection head $g_: ^{1536}  ^{512}$. The projection head consists of two linear layers with GELU activation and layer normalization.
+
+For a mini-batch of $B$ pairs $\{(_i^a, _i^b)\}_{i=1}^B$ with dynamics similarities $\{s_i\}_{i=1}^B$, the Soft InfoNCE loss is:
+
+where $_i = g_(f_(_i))$ are $_2$-normalized embeddings, $$ is a learnable temperature parameter (initialized at 0.07), and $_{ij} = (S / _s)_{ij}$ are the soft labels derived from the $B  B$ dynamics similarity matrix $S$ with similarity temperature $_s = 0.1$.
+
+Training Details
+
+We train on 5 NVIDIA RTX PRO 6000 GPUs using DDP with bf16 mixed precision and gradient checkpointing. The effective batch size is $1{,}280$ (128 per GPU $$ 5 GPUs $$ 2 gradient accumulation steps). We use AdamW~ with separate learning rates for the backbone ($10^{-5}$) and projection head ($10^{-3}$), cosine decay with 500-step linear warmup over 30{,}000 total steps, and weight decay $0.05$.
+
+The DINOv2-ViT-B/14 backbone has 86.6M parameters; the projection head adds 1.6M, totalling 88.2M trainable parameters. Training takes approximately 5.5 hours.
+
+Experiments
+
+DynaCLIP-Bench
+
+We introduce DynaCLIP-Bench, a benchmark for evaluating physics-aware visual representations. The dataset comprises 100{,}000 (image, physics) entries generated from 20{,}000 DomainNet real-domain images across 345 categories, each paired with 5 category-grounded physics configurations. We split 70/15/15 for train/val/test (all splits share images but are disjoint in entries, using seed 42 for reproducibility).
+
+Baselines
+
+We compare DynaCLIP against frozen (un-fine-tuned) visual encoders spanning three paradigms:
+
+Experiment 1: Linear Probing
+
+We freeze each backbone and train a linear probe (Ridge regression for physical properties, logistic regression for material type) with 5 random seeds and report mean $$ 95\
+
+Experiment 2: Zero-Shot $k$-NN Physics Inference
+
+We evaluate zero-shot physics prediction via $k$-nearest neighbor retrieval in embedding space. For each test image, we retrieve the $k$ nearest training images and average their physics labels. This tests whether objects with similar physics are nearby in embedding space, without requiring a trained probe.
+
+Experiment 3: Material Clustering
+
+We apply $K$-means ($K{=}10$) to frozen features and report Normalized Mutual Information (NMI) and Adjusted Rand Index (ARI) against ground-truth material type labels.
+
+Experiment 4: Ablation Studies
+
+We ablate four design choices by training each variant for 5{,}000 steps on 1 GPU and evaluating via Ridge regression probing on backbone features. The full DynaCLIP model (30K steps) is included as a reference.
+
+Qualitative Analysis
+
+Figure~ presents t-SNE visualizations of the learned embedding space colored by material type. DynaCLIP produces tighter material-type clusters compared to frozen baselines, consistent with the quantitative clustering results in Table~.
+
+\\[0.5em]
+
+.}
+
+Analysis and Discussion
+
+Table~ shows that DynaCLIP substantially outperforms all six frozen baselines on physics linear probing, achieving $R^2 = 0.550$ on mass (+46.7\
+
+Table~ reveals that $k$-NN performance is remarkably similar across all models with strong category recognition---differences are in the third decimal place. This is expected: since physics properties are assigned per-category, any model that correctly identifies an object's category will retrieve neighbors with similar physics. The key insight is that DynaCLIP's advantage lies not in retrieval but in the linear decodability of physics properties from its features (Table~).
+
+Table~ demonstrates that DynaCLIP produces the most material-aware feature space, achieving NMI $= 0.435$ and ARI $= 0.335$---substantially above the next best baseline (CLIP-L/14: NMI $= 0.350$, ARI $= 0.314$). This confirms that the contrastive fine-tuning successfully reorganises the embedding space to group objects by material type rather than purely by semantic category.
+
+The ablation comparing category-grounded vs.\ random physics assignment (Table~) shows the largest degradation of any ablation: mass $R^2$ drops from 0.714 to 0.466 ($-34.7\
+
+An interesting finding is that removing hard negative mining actually improves short-horizon performance (Table~, 5K steps). We hypothesize that category-grounded material priors already provide strong contrastive signal: randomly sampled cross-category pairs span different materials and thus generate informative physics contrasts without explicit mining. Hard mining introduces same-category pairs with subtle within-material physics differences, which may add optimization difficulty without proportional benefit at this training scale. The full model's advantage emerges in the absolute evaluation (Table~), where 30K steps of training with the complete pipeline achieves the best downstream performance.
+
+The frozen-backbone ablation shows competitive but lower physics prediction ($R^2 = 0.542$ vs.\ $0.714$ for fine-tuned), confirming that fine-tuning reshapes features beyond what a projection head alone can achieve.
+
+Our physics engine is analytical and deterministic, lacking collision dynamics, articulated-body effects, and deformable materials. The category-to-material mapping is coarse-grained: a  could be glass, plastic, or even metal. Category labels are limited to DomainNet's 345 classes. The $k$-NN results suggest that the learned physics structure is tightly coupled with category identity, limiting zero-shot transfer to novel categories. Scaling to open-vocabulary categories and integrating learned physics simulators are natural next steps.
+
+We envision three extensions: (i) replacing the analytical engine with a learned differentiable simulator~ for richer dynamics signals; (ii) extending to articulated and deformable objects; and (iii) integrating DynaCLIP features into downstream manipulation policies (, via ACT~ or Diffusion Policy~) to evaluate impact on real-world success rates.
+
+Conclusion
+
+We presented DynaCLIP, a contrastive pre-training framework that teaches visual encoders to capture latent physical properties of objects. By leveraging category-grounded material priors and a Soft InfoNCE loss with continuous dynamics similarity targets, DynaCLIP produces visual representations with physics-aware structure that is absent in general-purpose encoders. On our DynaCLIP-Bench evaluation against six baselines (DINOv2-B/14, DINOv2-L/14, CLIP-L/14, SigLIP-B/16, R3M, VIP), DynaCLIP (ViT-B/14, 86.6M params) achieves $R^2 = 0.550 / 0.416 / 0.659$ for mass/friction/restitution linear probing---outperforming DINOv2-L/14 (304M params) by 25\

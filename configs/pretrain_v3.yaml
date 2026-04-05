@@ -38,7 +38,7 @@ training:
   grad_accum_steps: 1
   use_bf16: true
   wiseft_alpha: 0.1
-  use_physics_vectors: false    # Key change: use dynamics_sim, not physics vectors
+  use_physics_vectors: false
 
 # Data: NO hard mining, trajectory-based similarity
 data:

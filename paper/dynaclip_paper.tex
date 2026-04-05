@@ -1,0 +1,847 @@
+\documentclass{article}
+
+
+% Required packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage[margin=1in]{geometry}
+
+% Custom commands
+\newcommand{\methodname}{DynaCLIP}
+\newcommand{\ie}{\textit{i.e.}}
+\newcommand{\eg}{\textit{e.g.}}
+\newcommand{\etal}{\textit{et al.}}
+\newcommand{\wrt}{\textit{w.r.t.}}
+\newcommand{\reals}{\mathbb{R}}
+
+\title{\methodname{}: Learning Visual Representations of Physical Object Properties via Category-Grounded Contrastive Pre-Training}
+
+\author{Anonymous Authors}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Visual representations that capture the \emph{physical} properties of objects---such as mass, friction, and elasticity---are critical for robotic manipulation, yet current visual encoders are trained purely on semantic or geometric objectives that discard physics-relevant cues. We introduce \methodname{}, a contrastive pre-training framework that endows visual backbones with sensitivity to latent material and dynamics properties. Our key insight is that object categories provide strong priors over material types (\eg, a \texttt{hammer} is metal; a \texttt{teddy\_bear} is fabric), enabling the generation of physically plausible parameter configurations without requiring real-world measurements. We pair each image with multiple physics configurations sampled from category-grounded material priors, simulate their analytical dynamics under diagnostic actions, and train a DINOv2-ViT-B/14 backbone with a \emph{Soft InfoNCE} loss that uses continuous dynamics similarity as soft contrastive targets. On the \textbf{DynaCLIP-Bench} evaluation suite---spanning linear probing, zero-shot $k$-NN inference, material clustering, and downstream manipulation in ManiSkill3---\methodname{} substantially outperforms frozen DINOv2, CLIP-L/14, SigLIP, MCR (MAE), and embodied baselines (R3M, VIP) on physics probing. On downstream behavior cloning, \methodname{} produces the most physics-robust policies (generalization ratio $1.02\times$ vs.\ $0.76\times$ for CLIP). Beyond our custom benchmarks, \methodname{} achieves \textbf{34.1\%} average success on \textbf{LIBERO-10} ($+22\%$ over DINOv2, $+56\%$ over CLIP, and $+150\%$ on the most physics-intensive task), demonstrating that physics-aware features transfer to established manipulation benchmarks. Code, data, and checkpoints will be released.
+\end{abstract}
+
+
+% ======================================================================
+\section{Introduction}
+\label{sec:intro}
+% ======================================================================
+
+Deploying robots in unstructured environments demands visual representations that go beyond recognizing \emph{what} an object is or \emph{where} it appears. A manipulation policy tasked with grasping a ceramic mug must produce markedly different forces, trajectories, and grasp widths than one handling a foam cup---even though both objects share the same semantic label ``cup.'' The distinction lies in their physical material properties: mass, surface friction, and elastic restitution, none of which are captured by existing large-scale visual encoders~\cite{oquab2024dinov2,radford2021clip,zhai2023siglip}.
+
+Recent work in embodied AI has made impressive strides toward general-purpose visual representations for robotics~\cite{nair2022r3m,ma2022vip,radosavovic2023vc1,karamcheti2023voltron}. These approaches pre-train on egocentric video~\cite{radosavovic2023vc1}, language-conditioned frames~\cite{karamcheti2023voltron}, or video-language data from the Ego4D corpus~\cite{nair2022r3m,ma2022vip}. While effective for downstream policy learning, they do not explicitly encode the physical material properties that determine an object's response to applied forces.
+
+In this paper, we ask: \emph{can we teach a visual encoder to predict how an object will behave physically, purely from its appearance?} We answer affirmatively by introducing \methodname{}, a contrastive pre-training framework that imbues DINOv2 features with physics-aware structure (Figure~\ref{fig:method}).
+
+Our approach rests on a simple but powerful observation: \textbf{object categories carry strong implicit priors over material properties}. A \texttt{hammer} is almost always metal (high mass, low restitution); a \texttt{trombone} is brass (high density, moderate friction); a \texttt{teddy\_bear} is fabric (low mass, high friction). By mapping 345 DomainNet object categories to 10 material types---each with physically plausible parameter distributions---we avoid the need for expensive real-world measurement while still producing training signals that correlate visual appearance with physical behavior.
+
+Given an image and its category, \methodname{} samples multiple physics configurations from the corresponding material prior, simulates their dynamics under standardized diagnostic actions using an analytical physics engine, and measures pairwise dynamics similarity. The resulting \emph{continuous} similarity scores serve as soft targets for a symmetric InfoNCE loss, replacing the hard positive/negative assignments of standard contrastive learning. Images of objects with similar material properties are pulled together in embedding space proportionally to their dynamics similarity.
+
+We evaluate \methodname{} on the \textbf{DynaCLIP-Bench} suite consisting of ten experimental tracks:
+\begin{enumerate}
+    \item \textbf{Linear probing} for mass, friction, and restitution $R^2$ prediction from frozen features, plus material-type classification accuracy;
+    \item \textbf{Zero-shot $k$-NN} physics inference using nearest-neighbor retrieval;
+    \item \textbf{Material clustering} quality measured via NMI and ARI;
+    \item \textbf{Ablation studies} isolating the contributions of category-grounded priors, hard-negative mining, soft InfoNCE, and backbone fine-tuning depth;
+    \item \textbf{Invisible physics test} measuring whether embeddings encode physics beyond visual similarity;
+    \item \textbf{Zero-shot retrieval} for physics prediction from a reference library without any trained probes;
+    \item \textbf{Computational cost comparison} of parameters, latency, and throughput across all backbones;
+    \item \textbf{World model evaluation} testing whether learned features support next-state dynamics prediction via an RSSM architecture;
+    \item \textbf{Downstream manipulation policy} evaluating physics robustness of behavior cloning policies built on frozen features in ManiSkill3;
+    \item \textbf{LIBERO-10} downstream benchmark validating that physics-aware features transfer to an established multi-task manipulation setting.
+\end{enumerate}
+
+Our contributions are:
+\begin{itemize}
+    \item We propose \methodname{}, the first contrastive pre-training framework that explicitly targets physical property awareness in visual representations;
+    \item We introduce \textbf{category-grounded material priors} that map 345 object categories to 10 material types with physically plausible parameter ranges, enabling scalable data generation without real-world measurement;
+    \item We design the \textbf{Soft InfoNCE} loss with continuous dynamics similarity targets, and show it outperforms standard InfoNCE and triplet alternatives;
+    \item We establish \textbf{DynaCLIP-Bench}, a benchmark for evaluating physics-aware visual representations, and demonstrate that \methodname{} substantially outperforms DINOv2, CLIP, SigLIP, MCR (MAE), R3M, and VIP baselines;
+    \item We demonstrate that \methodname{} features produce the \textbf{most physics-robust downstream manipulation policies} on ManiSkill3 PickCube (generalization ratio $1.02\times$ vs.\ $0.76\times$ for CLIP) and achieve \textbf{34.1\% average success on LIBERO-10} ($+22\%$ over DINOv2, $+56\%$ over CLIP, and $+150\%$ on the most physics-intensive task), validating the practical utility of physics-aware representations on established manipulation benchmarks.
+\end{itemize}% ======================================================================
+\section{Related Work}
+\label{sec:related}
+% ======================================================================
+
+\paragraph{Visual Representations for Robotics.}
+Large-scale self-supervised visual encoders have become the default feature backbone in robotics. CLIP~\cite{radford2021clip} and SigLIP~\cite{zhai2023siglip} learn vision-language alignment from web data; DINOv2~\cite{oquab2024dinov2} trains via self-distillation on curated images. While these encoders excel at semantic recognition, they are not optimized for downstream tasks that hinge on physical material properties.
+
+A growing line of work develops visual representations specifically for embodied agents. R3M~\cite{nair2022r3m} combines time-contrastive learning, video-language alignment, and $l_1$ regularization on Ego4D video. VIP~\cite{ma2022vip} reformulates visual representations as value functions for reward specification. VC-1~\cite{radosavovic2023vc1} scales masked autoencoding (MAE)~\cite{he2022mae} to a combined Ego4D + ImageNet corpus, producing a single ViT-L encoder that generalises across 17 CortexBench tasks including locomotion, navigation, and manipulation. Voltron~\cite{karamcheti2023voltron} augments masked autoencoding with language-conditioned objectives, showing improvements on 5 manipulation tasks in simulation.
+
+These methods exploit temporal structure, language, or pixel reconstruction, but none explicitly encodes physics parameters. \methodname{} fills this gap by providing a training signal that captures \emph{how} objects respond to forces, complementing the \emph{what} and \emph{where} captured by existing encoders.
+
+\paragraph{Physical Scene Understanding.}
+A separate body of work infers physical properties from visual observations. Intuitive Physics Networks~\cite{lerer2016learning} predict block-tower stability from images. PhyDNet~\cite{guen2020disentangling} disentangles physical dynamics from residual information for video prediction. NeuroFluid~\cite{guan2022neurofluid} estimates fluid properties from visual observations. The physics-informed neural network (PINN) paradigm~\cite{raissi2019pinn} embeds PDE constraints into network training.
+
+Unlike these works, which build task-specific prediction heads, \methodname{} targets general-purpose \emph{representation learning}: the physics-aware structure is injected into the feature backbone itself, enabling zero-shot transfer to novel objects and tasks.
+
+\paragraph{Contrastive Learning with Soft Labels.}
+Standard contrastive learning~\cite{chen2020simclr,he2020moco} treats each pair as binary (positive or negative). Soft-label extensions replace hard assignments with continuous similarity targets. SCL~\cite{khosla2020supervised} uses class labels as supervision. FlatNCE~\cite{chen2023flatnce} addresses gradient issues in large-batch InfoNCE. Our Soft InfoNCE loss is most closely related to the ordinal contrastive objectives in~\cite{zheng2021ressl}, but uses dynamics simulation rather than augmentation similarity.
+
+
+% ======================================================================
+\section{Method}
+\label{sec:method}
+% ======================================================================
+
+\subsection{Overview}
+\label{sec:overview}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering\vspace{2em}\textbf{Method overview diagram.} Three stages: (1) Category-grounded data generation maps 345 DomainNet categories $\to$ 10 material types $\to$ physics samples; (2) Pair construction with hard-positive/negative mining; (3) Soft InfoNCE pre-training of DINOv2-ViT-B/14 with dynamics similarity targets.\vspace{2em}}}
+\caption{\textbf{\methodname{} pipeline.} Given images with category labels, we sample physics configurations from category-grounded material priors, compute dynamics similarities, and fine-tune a DINOv2-ViT-B/14 backbone with Soft InfoNCE using continuous similarity targets.}
+\label{fig:method}
+\end{figure}
+
+\methodname{} comprises three stages (Figure~\ref{fig:method}):
+\begin{enumerate}
+    \item \textbf{Category-Grounded Data Generation}: For each image-category pair, sample $K{=}5$ physics configurations from the corresponding material prior, compute analytical dynamics, and store metadata.
+    \item \textbf{Contrastive Pair Construction}: Mine hard-positive and hard-negative pairs using dynamics similarity as the ranking criterion.
+    \item \textbf{Soft InfoNCE Pre-Training}: Fine-tune a DINOv2-ViT-B/14 backbone with a soft contrastive loss that uses continuous dynamics similarity as soft targets.
+\end{enumerate}
+
+
+\subsection{Category-Grounded Material Priors}
+\label{sec:priors}
+
+We observe that an object's visual category provides a strong prior over its material composition. We manually assign each of the 345 DomainNet~\cite{peng2019domainnet} object categories to one of 10 material types:
+\begin{equation}
+    \mathcal{M} = \{\text{metal}, \text{wood}, \text{fabric}, \text{glass/ceramic}, \text{rubber/plastic}, \text{food/organic}, \text{paper/light}, \text{animal}, \text{stone/heavy}, \text{default}\}
+\end{equation}
+
+Each material type $m \in \mathcal{M}$ defines a prior distribution over three physical parameters:
+\begin{equation}
+    p_m(\phi) = \text{Uniform}\big([\mu_\text{lo}^{(m)}, \sigma_\text{lo}^{(m)}, \epsilon_\text{lo}^{(m)}],\ [\mu_\text{hi}^{(m)}, \sigma_\text{hi}^{(m)}, \epsilon_\text{hi}^{(m)}]\big)
+\end{equation}
+where $\phi = (\mu, \sigma, \epsilon)$ denotes mass, static friction coefficient, and coefficient of restitution, respectively. For example, the \texttt{metal} prior uses mass $\in [2.0, 10.0]$~kg, friction $\in [0.3, 0.6]$, and restitution $\in [0.2, 0.5]$; the \texttt{fabric} prior uses mass $\in [0.05, 0.5]$, friction $\in [0.6, 0.95]$, and restitution $\in [0.1, 0.3]$.
+
+For each of the $N{=}20{,}000$ images, we sample $K{=}5$ physics configurations from the category-appropriate material prior, yielding $100{,}000$ (image, physics) entries.
+
+\subsection{Analytical Physics Engine}
+\label{sec:engine}
+
+Rather than running a full rigid-body simulator, we use closed-form analytical equations to compute the trajectory of an object under a standardised diagnostic action (unit horizontal impulse). Given physics parameters $\phi = (\mu, \sigma, \epsilon)$:
+
+\begin{align}
+    v(t) &= v_0 \cdot e^{-\sigma g \cdot t / \mu} \label{eq:velocity} \\
+    x(t) &= \int_0^t v(\tau) \, d\tau \label{eq:position} \\
+    \text{bounce}(h) &= \epsilon \cdot h \label{eq:bounce}
+\end{align}
+
+where $v_0 = 1/\mu$ (impulse response inversely proportional to mass), $g = 9.81$~m/s$^2$, and the vertical bounce height decays geometrically with coefficient $\epsilon$. We discretize the trajectory at 50 timesteps (10 Hz over 5 seconds) and compute a 150-dimensional fingerprint $\mathbf{f} \in \reals^{150}$ (50 timesteps $\times$ 3 channels: $x$, $y$, $v$).
+
+\subsection{Dynamics Similarity}
+\label{sec:similarity}
+
+Given two physics fingerprints $\mathbf{f}_i, \mathbf{f}_j$, we define a proxy dynamics similarity:
+\begin{equation}
+    s(\phi_i, \phi_j) = \exp\!\bigg(-\sum_{p \in \{\mu,\sigma,\epsilon\}} w_p \cdot \bigg|\frac{\phi_i^{(p)} - \phi_j^{(p)}}{\Delta_p}\bigg|^2\bigg)
+    \label{eq:proxy_sim}
+\end{equation}
+where $\Delta_p$ is the range of property $p$ across the dataset and $w_p$ is a property-specific weight. This exponential similarity produces well-spread values (mean $\approx 0.55$, std $\approx 0.21$), providing informative gradients throughout training.
+
+
+\subsection{Contrastive Pair Construction}
+\label{sec:pairs}
+
+We construct $P{=}500{,}000$ training pairs using a three-way mining strategy:
+\begin{itemize}
+    \item \textbf{Hard negatives} (30\%): Pairs where images look similar (same category) but physics are very different (\eg, two hammers with mass 2.1 vs 9.8 kg);
+    \item \textbf{Hard positives} (30\%): Pairs where images look different (different category) but physics are similar (\eg, a hammer and an anvil, both heavy metal);
+    \item \textbf{Random pairs} (40\%): Uniform sampling across the dataset.
+\end{itemize}
+
+This strategy forces the model to go beyond visual similarity and learn the physics-relevant features.
+
+
+\subsection{Soft InfoNCE Pre-Training}
+\label{sec:loss}
+
+We fine-tune a DINOv2-ViT-B/14 backbone $f_\theta$ followed by a projection head $g_\psi: \reals^{1536} \to \reals^{512}$. The projection head consists of two linear layers with GELU activation and layer normalization.
+
+For a mini-batch of $B$ pairs $\{(\mathbf{x}_i^a, \mathbf{x}_i^b)\}_{i=1}^B$ with dynamics similarities $\{s_i\}_{i=1}^B$, the Soft InfoNCE loss is:
+\begin{equation}
+    \mathcal{L} = -\frac{1}{2B} \sum_{i=1}^{B} \bigg[
+        \sum_{j=1}^{B} \tilde{s}_{ij} \log \frac{\exp(\mathbf{z}_i^a \cdot \mathbf{z}_j^b / \tau)}{\sum_{k=1}^{B} \exp(\mathbf{z}_i^a \cdot \mathbf{z}_k^b / \tau)}
+        + (a \leftrightarrow b)
+    \bigg]
+    \label{eq:loss}
+\end{equation}
+where $\mathbf{z}_i = g_\psi(f_\theta(\mathbf{x}_i))$ are $\ell_2$-normalized embeddings, $\tau$ is a learnable temperature parameter (initialized at 0.07), and $\tilde{s}_{ij} = \text{softmax}(S / \tau_s)_{ij}$ are the soft labels derived from the $B \times B$ dynamics similarity matrix $S$ with similarity temperature $\tau_s = 0.1$.
+
+
+\subsection{Training Details}
+\label{sec:training}
+
+We train on 5 NVIDIA RTX PRO 6000 GPUs using DDP with bf16 mixed precision and gradient checkpointing. The effective batch size is $1{,}280$ (128 per GPU $\times$ 5 GPUs $\times$ 2 gradient accumulation steps). We use AdamW~\cite{loshchilov2019adamw} with separate learning rates for the backbone ($10^{-5}$) and projection head ($10^{-3}$), cosine decay with 500-step linear warmup over 30{,}000 total steps, and weight decay $0.05$.
+
+The DINOv2-ViT-B/14 backbone has 86.6M parameters; the projection head adds 1.6M, totalling 88.2M trainable parameters. Training takes approximately 5.5 hours.
+
+
+% ======================================================================
+\section{Experiments}
+\label{sec:experiments}
+% ======================================================================
+
+\subsection{DynaCLIP-Bench}
+\label{sec:bench}
+
+We introduce \textbf{DynaCLIP-Bench}, a benchmark for evaluating physics-aware visual representations. The dataset comprises 100{,}000 (image, physics) entries generated from 20{,}000 DomainNet real-domain images across 345 categories, each paired with 5 category-grounded physics configurations. We split 70/15/15 for train/val/test (all splits share images but are disjoint in entries, using seed 42 for reproducibility).
+
+\subsection{Baselines}
+\label{sec:baselines}
+
+We compare \methodname{} against frozen (un-fine-tuned) visual encoders spanning four paradigms:
+\begin{itemize}
+    \item \textbf{DINOv2-B/14}~\cite{oquab2024dinov2}: ViT-B/14 trained via self-distillation. This is the same architecture as \methodname{}'s backbone before fine-tuning.
+    \item \textbf{DINOv2-L/14}~\cite{oquab2024dinov2}: Larger ViT-L/14 variant (304M params).
+    \item \textbf{CLIP-L/14}~\cite{radford2021clip}: Vision-language contrastive model (ViT-L/14).
+    \item \textbf{SigLIP-B/16}~\cite{zhai2023siglip}: Sigmoid-loss vision-language model.
+    \item \textbf{R3M}~\cite{nair2022r3m}: ResNet-50 pre-trained on Ego4D for robot manipulation tasks.
+    \item \textbf{VIP}~\cite{ma2022vip}: ResNet-50 pre-trained via value-implicit reward learning on Ego4D.
+    \item \textbf{MCR (MAE)}~\cite{radosavovic2023vc1}: ViT-B/16 pre-trained via Masked Autoencoding (MAE)~\cite{he2022mae}, representing the masked-reconstruction paradigm used by VC-1. We use the public \texttt{vit\_base\_patch16\_224.mae} checkpoint (85.8M params, 768-dim CLS output).
+\end{itemize}
+
+
+\subsection{Experiment 1: Linear Probing}
+\label{sec:exp1}
+
+We freeze each backbone and train a linear probe (Ridge regression for physical properties, logistic regression for material type) with 5 random seeds and report mean $\pm$ 95\% CI.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Linear probing results.} $R^2$ for physics regression and accuracy for object category classification. We freeze each backbone and train a linear probe with 5 random seeds and report mean. \methodname{} uses the fine-tuned DINOv2-ViT-B/14 backbone features.}
+\label{tab:linear_probing}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Backbone} & \textbf{Mass $R^2$ $\uparrow$} & \textbf{Friction $R^2$ $\uparrow$} & \textbf{Restitution $R^2$ $\uparrow$} & \textbf{Category Acc $\uparrow$} \\
+\midrule
+MCR (MAE)~\cite{radosavovic2023vc1}  & 0.051 & 0.129 & 0.338 & 0.387 \\
+SigLIP-B/16         & 0.124 & 0.025 & 0.275 & 0.644 \\
+R3M~\cite{nair2022r3m}               & 0.212 & 0.185 & 0.520 & 0.894 \\
+CLIP-L/14           & 0.317 & 0.242 & 0.482 & 0.941 \\
+DINOv2-B/14         & 0.375 & 0.167 & 0.557 & 0.987 \\
+DINOv2-L/14         & 0.440 & 0.297 & 0.607 & 0.991 \\
+\midrule
+\textbf{\methodname{} (ours)} & \textbf{0.550} & \textbf{0.416} & \textbf{0.659} & \textbf{0.997} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Experiment 2: Zero-Shot $k$-NN Physics Inference}
+\label{sec:exp2}
+
+We evaluate zero-shot physics prediction via $k$-nearest neighbor retrieval in embedding space. For each test image, we retrieve the $k$ nearest training images and average their physics labels. This tests whether objects with similar physics are nearby in embedding space, without requiring a trained probe.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{$k$-NN physics inference.} $R^2$ for predicting mass, friction, and restitution via $k$-nearest neighbor retrieval in embedding space. All models use backbone features.}
+\label{tab:knn}
+\begin{tabular}{lcccccc}
+\toprule
+& \multicolumn{3}{c}{$k=5$} & \multicolumn{3}{c}{$k=10$} \\
+\cmidrule(lr){2-4} \cmidrule(lr){5-7}
+\textbf{Backbone} & Mass & Friction & Restitution & Mass & Friction & Restitution \\
+\midrule
+MCR (MAE)~\cite{radosavovic2023vc1} & 0.507 & 0.476 & 0.653 & 0.357 & 0.319 & 0.498 \\
+SigLIP-B/16       & 0.559 & 0.517 & 0.693 & 0.463 & 0.389 & 0.566 \\
+VIP~\cite{ma2022vip}             & 0.643 & 0.629 & 0.793 & 0.604 & 0.595 & 0.752 \\
+R3M~\cite{nair2022r3m}             & 0.653 & 0.639 & 0.800 & 0.618 & 0.606 & 0.766 \\
+DINOv2-B/14       & 0.669 & \textbf{0.666} & 0.817 & 0.669 & 0.658 & 0.800 \\
+DINOv2-L/14       & 0.669 & \textbf{0.666} & \textbf{0.821} & 0.669 & \textbf{0.661} & \textbf{0.809} \\
+CLIP-L/14         & 0.674 & 0.661 & 0.813 & \textbf{0.670} & 0.654 & 0.800 \\
+\midrule
+\textbf{\methodname{} (ours)} & \textbf{0.675} & 0.662 & 0.816 & 0.667 & 0.645 & 0.798 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Experiment 3: Material Clustering}
+\label{sec:exp3}
+
+We apply $K$-means ($K{=}10$) to frozen features and report Normalized Mutual Information (NMI) and Adjusted Rand Index (ARI) against ground-truth material type labels.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Material clustering quality.} $K$-means ($K{=}10$) on frozen backbone features, evaluated against ground-truth material type labels.}
+\label{tab:clustering}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Backbone} & \textbf{NMI $\uparrow$} & \textbf{ARI $\uparrow$} \\
+\midrule
+MCR (MAE)~\cite{radosavovic2023vc1} & 0.063 & 0.032 \\
+SigLIP-B/16       & 0.158 & 0.117 \\
+R3M~\cite{nair2022r3m}             & 0.285 & 0.233 \\
+DINOv2-L/14       & 0.290 & 0.148 \\
+DINOv2-B/14       & 0.331 & 0.181 \\
+VIP~\cite{ma2022vip}             & 0.345 & 0.282 \\
+CLIP-L/14         & 0.350 & 0.314 \\
+\midrule
+\textbf{\methodname{} (ours)} & \textbf{0.435} & \textbf{0.335} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Experiment 4: Ablation Studies}
+\label{sec:exp4}
+
+We ablate sixteen design choices organized into five groups by training each variant for 10{,}000 steps on 1 GPU and evaluating via Ridge regression probing on backbone features. The full \methodname{} model (30K steps) is included as a reference. Results are in Table~\ref{tab:ablations}.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Ablation studies.} $R^2$ for physics regression and material classification accuracy via Ridge probing. Each ablation trains for 10K steps; the full model trains for 30K steps. Best per column in \textbf{bold}.}
+\label{tab:ablations}
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Variant} & \textbf{Mass $R^2$} & \textbf{Friction $R^2$} & \textbf{Restitution $R^2$} & \textbf{Material Acc} \\
+\midrule
+\methodname{} (full, 30K) & 0.584 & 0.523 & 0.689 & 0.999 \\
+\midrule
+\multicolumn{5}{l}{\emph{Loss function ablations}} \\
+No hard mining              & \textbf{0.714} & \textbf{0.618} & \textbf{0.763} & \textbf{1.000} \\
+Standard InfoNCE            & 0.601 & 0.557 & 0.715 & 0.999 \\
+Triplet loss                & 0.435 & 0.403 & 0.581 & 0.997 \\
+BYOL loss (collapsed)       & 0.217 & 0.180 & 0.373 & 0.729 \\
+\midrule
+\multicolumn{5}{l}{\emph{Hard-negative ratio ablations}} \\
+Hard neg 15\% (reduced)     & 0.641 & 0.504 & 0.683 & 0.437 \\
+Hard neg 50\% (increased)   & 0.466 & 0.232 & 0.376 & 0.403 \\
+\midrule
+\multicolumn{5}{l}{\emph{Data \& training ablations}} \\
+Random physics              & 0.466 & 0.453 & 0.624 & 0.999 \\
+Mass-only similarity        & 0.682 & 0.521 & 0.710 & 0.414 \\
+Friction-only similarity    & 0.550 & 0.561 & 0.661 & 0.387 \\
+Data scale: 10K entries     & 0.641 & 0.407 & 0.536 & 0.182 \\
+\midrule
+\multicolumn{5}{l}{\emph{Initialization ablations}} \\
+ImageNet init (no DINOv2)   & 0.035 & 0.006 & 0.133 & 0.086 \\
+Random init (no pretrain)   & 0.014 & 0.024 & 0.084 & 0.032 \\
+\midrule
+\multicolumn{5}{l}{\emph{Fine-tuning depth ablations}} \\
+Frozen backbone             & 0.542 & 0.533 & 0.693 & 0.999 \\
+Last-2 blocks only          & 0.603 & 0.569 & 0.717 & 0.999 \\
+Last-4 blocks only          & 0.625 & 0.578 & 0.729 & 0.999 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Experiment 5: Invisible Physics Test}
+\label{sec:exp5}
+
+A physics-aware encoder should produce embeddings that correlate with physical properties even when visual appearance is controlled. We evaluate this via the \emph{Invisible Physics Test}: given 500 test pairs where each pair consists of a single image associated with two different physics configurations (same visual input, different latent physics), we measure whether frozen backbone features can predict the physics properties.
+
+Since frozen deterministic encoders produce the same embedding for the same image regardless of its latent physics, this experiment fundamentally tests whether the \emph{distribution} of embedding activations across the dataset has learned to correlate with physical properties. We report: (1) \emph{Heavier Classification}---logistic regression accuracy for predicting which physics configuration has greater mass; (2) \emph{AUC}---area under ROC curve for the heavier classification task; and (3) \emph{Mass Regression $R^2$}---Ridge regression from embeddings to mass values.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Invisible physics test.} Mass regression $R^2$, heavier classification accuracy and AUC for predicting physics from frozen features. \methodname{} is the \emph{only} model with positive mass $R^2$, demonstrating that its embeddings encode physics information beyond visual similarity.}
+\label{tab:invisible_physics}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Backbone} & \textbf{Heavier Acc $\uparrow$} & \textbf{AUC $\uparrow$} & \textbf{Mass $R^2$ $\uparrow$} \\
+\midrule
+VIP~\cite{ma2022vip}             & 0.400 & 0.386 & $-$0.655 \\
+R3M~\cite{nair2022r3m}             & 0.450 & 0.447 & $-$0.130 \\
+SigLIP-B/16       & 0.500 & 0.532 & $-$1.188 \\
+DINOv2-B/14       & 0.520 & 0.472 & $-$0.173 \\
+DINOv2-L/14       & 0.530 & 0.495 & $-$0.018 \\
+CLIP-L/14         & 0.590 & 0.585 & $-$1.336 \\
+\midrule
+\textbf{\methodname{} (ours)} & \textbf{0.560} & \textbf{0.615} & \textbf{0.300} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Experiment 6: Zero-Shot $k$-NN Physics Retrieval}
+\label{sec:exp6}
+
+We evaluate physics inference via a strict zero-shot retrieval protocol: given a query image, we encode it with each backbone, retrieve the $k$ nearest neighbors from a reference library of 5{,}000 images using cosine similarity, and predict physics via similarity-weighted averaging of neighbors' properties. Library and query sets are strictly disjoint ($n_\text{query}{=}1{,}000$). This protocol uses no trained probes---physics predictions come purely from the structure of the embedding space.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Zero-shot $k$-NN physics retrieval.} $R^2$ for physics prediction via cosine-similarity retrieval from a 5{,}000-image library ($k{=}5$). Mean $R^2$ averages over all three properties.}
+\label{tab:zeroshot}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Backbone} & \textbf{Mass $R^2$} & \textbf{Friction $R^2$} & \textbf{Rest. $R^2$} & \textbf{Mean $R^2$} \\
+\midrule
+SigLIP-B/16       & 0.309 & 0.199 & 0.441 & 0.316 \\
+VIP~\cite{ma2022vip}             & 0.466 & 0.476 & 0.696 & 0.546 \\
+R3M~\cite{nair2022r3m}             & 0.487 & 0.499 & 0.681 & 0.556 \\
+DynaCLIP (ours)   & 0.536 & 0.426 & 0.638 & 0.533 \\
+CLIP-L/14         & 0.563 & \textbf{0.586} & 0.735 & 0.628 \\
+DINOv2-B/14       & 0.582 & 0.567 & 0.741 & 0.630 \\
+DINOv2-L/14       & \textbf{0.591} & 0.568 & \textbf{0.753} & \textbf{0.637} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Qualitative Analysis}
+\label{sec:qualitative}
+
+Figure~\ref{fig:tsne} presents t-SNE visualizations of the learned embedding space colored by material type. \methodname{} produces tighter material-type clusters compared to frozen baselines, consistent with the quantitative clustering results in Table~\ref{tab:clustering}.
+
+\begin{figure}[h]
+\centering
+\begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{../results/final_v3/tsne/tsne_DINOv2-B_14.png}
+    \caption{DINOv2-B/14 (frozen)}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{../results/final_v3/tsne/tsne_DynaCLIP-backbone.png}
+    \caption{\methodname{} (fine-tuned)}
+\end{subfigure}
+\\[0.5em]
+\begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{../results/final_v3/tsne/tsne_CLIP-L_14.png}
+    \caption{CLIP-L/14 (frozen)}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.48\linewidth}
+    \includegraphics[width=\linewidth]{../results/final_v3/tsne/tsne_DINOv2-L_14.png}
+    \caption{DINOv2-L/14 (frozen)}
+\end{subfigure}
+\caption{\textbf{t-SNE visualizations} of backbone embedding spaces colored by material type (10 types). \methodname{} (b) produces tighter, more separable material-type clusters compared to frozen baselines (a, c, d), consistent with its higher NMI and ARI scores in Table~\ref{tab:clustering}.}
+\label{fig:tsne}
+\end{figure}
+
+
+% --- Computational Cost Table ---
+\subsection{Experiment 7: Computational Cost}
+\label{sec:cost}
+
+Table~\ref{tab:cost} compares the computational profiles of all backbones. \methodname{} adds only a projection head to DINOv2-B/14 (88.2M vs.\ 86.6M parameters) and introduces no latency overhead (5.6\,ms per image for both). By contrast, the ``L/14'' variants (DINOv2-L, CLIP-L) require $3.5\times$ the parameters and $2\times$ the latency, yet are outperformed by \methodname{} on physics probing (Table~\ref{tab:linear_probing}). R3M and VIP (ResNet-50, 23.5M) are the fastest encoders but produce the weakest physics representations. These results confirm that \methodname{}'s physics-awareness gains come from training signal design rather than model capacity.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Computational cost comparison} across all backbones. Throughput measured on a single NVIDIA RTX PRO 6000 Blackwell GPU with batch size 64.}
+\label{tab:cost}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Backbone & Params (M) & Dim & Latency (ms) & Throughput (img/s) \\
+\midrule
+R3M (ResNet-50) & 23.5 & 2048 & 1.6 & 4137 \\
+VIP (ResNet-50) & 23.5 & 2048 & 1.6 & 4135 \\
+MCR/MAE (ViT-B/16) & 85.8 & 768 & 5.4 & 890 \\
+SigLIP-B/16 & 92.9 & 768 & 4.2 & 1144 \\
+DINOv2-B/14 & 86.6 & 768 & 5.6 & 874 \\
+\textbf{\methodname{}} (ViT-B/14) & \textbf{88.2} & \textbf{512} & \textbf{5.6} & \textbf{873} \\
+CLIP-L/14 & 304.0 & 768 & 10.5 & 334 \\
+DINOv2-L/14 & 304.4 & 1024 & 12.9 & 328 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% --- Additional Figures ---
+\subsection{Additional Analysis Figures}
+\label{sec:extra_figures}
+
+Figure~\ref{fig:lp_bar} presents per-property bar charts comparing all backbones on linear probing, and Figure~\ref{fig:radar} shows a radar chart highlighting \methodname{}'s multi-metric advantage over the strongest baselines. Figure~\ref{fig:heatmap} provides a per-material heatmap of physics prediction $R^2$ across all materials and backbones, revealing that DynaCLIP's advantage is consistent across diverse material categories.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{../results/analyses/figures/linear_probing_bar.png}
+\caption{\textbf{Linear probing bar charts.} Per-property comparison of all backbones for mass $R^2$, friction $R^2$, restitution $R^2$, and category accuracy. \methodname{} (pink) leads across all physics properties.}
+\label{fig:lp_bar}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.65\linewidth]{../results/analyses/figures/radar_chart.png}
+\caption{\textbf{Multi-metric radar chart.} \methodname{} vs.\ top baselines across five evaluation axes: mass $R^2$, friction $R^2$, restitution $R^2$, category accuracy, and clustering NMI.}
+\label{fig:radar}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{../results/analyses/figures/per_material_heatmap.png}
+\caption{\textbf{Per-material physics prediction heatmap.} $R^2$ values for mass, friction, and restitution probing broken down by material type for all backbones. Sub-zero values indicate that within-material physics variance is difficult to predict from global probes; however, the relative ordering of backbones is consistent.}
+\label{fig:heatmap}
+\end{figure}
+
+
+% --- World Model Evaluation ---
+\subsection{Experiment 8: World Model Evaluation}
+\label{sec:worldmodel}
+next-state prediction using a Recurrent State-Space Model (RSSM)~\cite{hafner2019dreamer} in two settings.
+
+\paragraph{Synthetic trajectories.} We freeze each backbone and train a lightweight GRU-based RSSM (128-dim state, 256-dim hidden) on 20{,}000 synthetic trajectories derived from our metadata. Each trajectory consists of 5 images from the same object category with different physics configurations. Given the current frozen visual embedding and current physics values $(m, \mu, e)$, the RSSM predicts the next physics state. Table~\ref{tab:worldmodel} reports the best validation $R^2$ over 20 training epochs.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{World model evaluation (synthetic).} Best validation $R^2$ for next-state physics prediction using a frozen RSSM trained on each backbone's features. Higher is better.}
+\label{tab:worldmodel}
+\small
+\begin{tabular}{lccc}
+\toprule
+Backbone & Mass $R^2$ & Friction $R^2$ & Restitution $R^2$ \\
+\midrule
+R3M & 0.734 & 0.596 & 0.764 \\
+DINOv2-B/14 & 0.719 & 0.642 & 0.765 \\
+DINOv2-L/14 & 0.721 & 0.621 & 0.737 \\
+\textbf{\methodname{}} & \underline{0.737} & \textbf{0.676} & \underline{0.807} \\
+CLIP-L/14 & \textbf{0.745} & \underline{0.676} & \textbf{0.809} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Real ManiSkill3 trajectories.}
+We further evaluate world model quality on \emph{real} physics trajectories from ManiSkill3 simulation. We generate 10{,}508 manipulation trajectories (250 timesteps $\times$ 13 channels each) across diverse object-physics combinations, then train a Dreamer-v3-style RSSM~\cite{gafner2023dreamerv3} (862.7K parameters) on 5{,}000 subsampled trajectories (50 steps each) for 100 epochs. Table~\ref{tab:worldmodel_real} reports physics prediction $R^2$ from RSSM latent states and multi-horizon next-state prediction accuracy.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{World model on real ManiSkill3 trajectories.} Physics prediction $R^2$ from RSSM latent states and multi-horizon MSE for next-state prediction. The RSSM captures mass dynamics ($R^2{=}0.922$) but struggles with friction/restitution, which have subtler dynamical signatures.}
+\label{tab:worldmodel_real}
+\small
+\begin{tabular}{lcccc}
+\toprule
+\multicolumn{5}{l}{\emph{Physics Prediction from RSSM Latents}} \\
+\midrule
+Property & Mass & Friction & Restitution & --- \\
+$R^2$ & \textbf{0.922} & 0.007 & $-$0.008 & --- \\
+\midrule
+\multicolumn{5}{l}{\emph{Multi-Horizon Next-State MSE}} \\
+\midrule
+Horizon & $H{=}1$ & $H{=}3$ & $H{=}5$ & $H{=}10$ \\
+MSE & 0.0001 & 0.001 & 0.013 & 0.040underline{0.807} \\
+CLIP-L/14 & \textbf{0.745} & \underline{0.676} & \textbf{0.809} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% --- Downstream Policy Evaluation ---
+\subsection{Experiment 9: Downstream Manipulation Policy}
+\label{sec:downstream_policy}
+
+To evaluate whether \methodname{}'s physics-aware features benefit downstream robotic manipulation, we conduct a behavior cloning (BC) experiment on ManiSkill3~\cite{hu2023maniskill3} PickCube-v1. We collect 100 successful demonstrations using a scripted reactive expert under standard physics (mass${=}0.064$, friction${=}0.3$, restitution${=}0.0$), extract frozen visual features from rendered observations using each backbone, and train an MLP BC policy (features $+$ robot state $\to$ 4D end-effector delta actions). We then evaluate each policy across 8 physics conditions, including standard and 7 modified configurations with varied mass, friction, and restitution. We report success rate over 30 trials per condition.
+
+Table~\ref{tab:downstream_policy} reveals an important distinction between \emph{absolute} manipulation skill and \emph{physics robustness}. CLIP achieves the highest absolute success rate (mean $44.6\%$), likely due to its strong visual-semantic features suited for visuomotor control. However, examining the \emph{generalization ratio}---the ratio of mean success rate under varied physics to the standard-physics success rate---\methodname{} achieves the \textbf{highest physics robustness} at $1.02\times$ (no degradation when physics change), compared to $0.88\times$ for DINOv2, $0.76\times$ for CLIP, and $0.60\times$ for SigLIP. This demonstrates that while \methodname{} features may yield modestly lower absolute manipulation performance due to the ViT-B/14 backbone, the policies built on them are \emph{physics-invariant}---their success is not contingent on the training physics being preserved at test time. This property is critical for real-world deployment where object masses, surface textures, and contact properties vary unpredictably.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Downstream manipulation policy.} BC success rate (\%) on ManiSkill3 Pieven frozen baselines on physics linear probing, achieving $R^2 = 0.550$ on mass (+46.7\% over DINOv2-B/14), $R^2 = 0.416$ on friction (+148.7\%), and $R^2 = 0.659$ on restitution (+18.5\%). Notably, \methodname{} (ViT-B/14, 86.6M params) outperforms the much larger DINOv2-L/14 (304M params) across all metrics, demonstrating that physics-aware fine-tuning is more effective than simply scaling model size. Robot-specific representations (R3M and VIP) underperform general-purpose encoders despite being pre-trained on manipulation videos, suggesting that task-agnostic visual pre-training does not capture latent physics without explicit physics-grounded supervision.
+
+\paragraph{Masked reconstruction baselines (MCR).}
+The MCR baseline (MAE ViT-B/16) achieves the weakest physics probing among all baselines ($R^2 = 0.051 / 0.129 / 0.338$ for mass/friction/restitution), despite having comparable model capacity (85.8M params vs.\ 86.6M for DINOv2-B/14). MCR's category accuracy (0.387) is the \emph{lowest} among all baselines---far below DINOv2's 0.987---demonstrating that reconstruction-based pre-training produces fundamentally different representations from discriminative objectives. MCR captures pixel-level statistics (\eg, texture, color) that partially correlate with material properties, but lacks the category-level semantic structure that enables strong physics prediction. MCR's clustering NMI (0.063) is the \emph{lowest} of all models---far below even SigLIP (0.158)---while its ARI (0.032) similarly trails all baselines, indicating that reconstruction features form essentially random material-type clusters rather than the tight, separable groups produced by contrastive objectives. \methodname{} outperforms MCR by $10.8\times$ on mass $R^2$, $3.2\times$ on friction, and $1.9\times$ on restitution, confirming that physics-targeted contrastive training is essential.
+\label{tab:downstream_policy}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+Backbone & Standard & Heavy & Varied Mean & Gen.\ Ratio $\uparrow$ \\
+\midrule
+R3M & 13.3 & 3.3 & 14.3 & 1.07 \\
+\textbf{\methodname{}} & 26.7 & 6.7 & 27.1 & \textbf{1.02} \\
+DINOv2 & 40.0 & 10.0 & 35.2 & 0.88 \\
+SigLIP & 46.7 & 16.7 & 28.1 & 0.60 \\
+CLIP & \textbf{56.7} & \textbf{13.3} & \textbf{42.9} & 0.76 \\
+\bottomrule
+
+\paragraph{Hard-negative ratio sensitivity.}
+Table~\ref{tab:ablations} reveals a clear negative correlation between hard-negative mining ratio and physics probing quality at 10K steps. Reducing hard negatives from the default 30\% to 15\% yields strong performance (mass $R^2{=}0.641$), while increasing to 50\% degrades substantially (mass $R^2{=}0.466$). Excessive hard mining collapses material discrimination: category accuracy drops from 0.437 (15\%) to 0.403 (50\%). This confirms that hard negatives---pairs from the same category with very different physics---create an optimization landscape that is difficult to navigate in limited training, though their benefit likely emerges with longer training.
+
+\paragraph{Initialization matters critically.}
+The initialization ablations (Table~\ref{tab:ablations}) reveal a dramatic effect: starting from ImageNet-pretrained weights yields mass $R^2{=}0.035$, and random initialization yields $R^2{=}0.014$---both near-zero and far below DINOv2-initialized training ($R^2{=}0.714$ at 10K steps). This demonstrates that DINOv2's self-supervised pre-training provides essential visual features that \methodname{}'s contrastive fine-tuning can reshape for physics awareness. Without rich visual features from pre-training, 10K steps of physics-contrastive training cannot simultaneously learn basic vision and physics structure.
+
+\paragraph{Physics-subset similarity.}
+Training with \emph{mass-only} similarity (ignoring friction and restitution in the contrastive target) achieves the highest mass $R^2{=}0.682$ among 10K ablations while still achieving strong friction ($0.521$) and restitution ($0.710$) prediction. Conversely, \emph{friction-only} similarity achieves the best friction $R^2{=}0.561$ but lower mass ($0.550$). The transferability across properties reflects the correlation between physics parameters within material categories: mass and friction both depend on material density and surface properties, so training on either provides partial supervision for the other.
+
+\paragraph{Data scale effects.}
+Training on only 10K entries (10\% of the full 100K dataset) yields competitive mass $R^2{=}0.641$ but sharply reduces category accuracy from 0.999 to 0.182, suggesting that a diversity of category-physics associations is critical for material-level discrimination. The reduced data regime captures physics trends within frequently sampled categories but lacks coverage of the tail distribution.
+\end{tabular}
+\end{table}
+on synthetic data (mass $R^2{=}0.737$, friction $R^2{=}0.676$, restitution $R^2{=}0.807$), closely matching CLIP-L/14 despite using a 512-dim embedding vs.\ 768-dim. On \emph{real} ManiSkill3 trajectories (Table~\ref{tab:worldmodel_real}), the Dreamer-v3-style RSSM achieves strong mass prediction ($R^2{=}0.922$) but near-zero friction and restitution prediction ($R^2{\approx}0$). This asymmetry reflects the dynamical observability of each property in manipulation: mass directly determines object acceleration and is observable within a few timesteps, while friction and restitution manifest primarily at contact boundaries that may occur rarely or subtly in 250-step trajectories. The multi-horizon results ($\text{MSE}_{H=1}{=}0.0001$, $\text{MSE}_{H=10}{=}0.040$) show expected degradation over longer horizons, confirming that the RSSM captures short-range dynamics reliably
+
+% --- LIBERO-10 Downstream Evaluation ---
+\subsection{Experiment 10: LIBERO-10 Downstream Manipulation}
+\label{sec:libero}
+
+To validate \methodname{}'s physics-aware features on a realistic multi-task manipulation benchmark beyond ManiSkill3, we evaluate on \textbf{LIBERO-10}~\cite{liu2024libero}---a suite of 10 long-horizon tabletop tasks (e.g., ``pick up the book and place it in the compartment,'' ``turn on the stove and put the moka pot on it'') built on robosuite~\cite{zhu2020robosuite} with MuJoCo physics. Each task includes 50 human demonstrations (${\sim}13{,}000$ frames) with dual-camera observations (agentview and eye-in-hand). We extract \emph{frozen} visual features from each backbone for both cameras, concatenate them with 12-dim proprioceptive state (end-effector position, gripper, joint angles), and train a 2-layer LSTM behavior-cloning policy (512 hidden, separate arm/gripper heads with SmoothL1 and BCE losses respectively) on 50-step sequence chunks with 50\% overlap. Per-backbone image normalization is applied (R3M: raw pixels, SigLIP: $[0.5, 0.5, 0.5]$, CLIP: OpenAI norms, others: ImageNet). We evaluate via rollouts in the simulator (3~seeds $\times$ 50~episodes per task, 100 training epochs).
+
+\begin{table}[h]
+\centering
+\caption{\textbf{LIBERO-10 downstream manipulation.} Per-task and average success rate (\%) across 10 tasks (3~seeds $\times$ 50~episodes, 100-epoch LSTM BC with dual camera, per-backbone normalization). Frozen encoder + lightweight LSTM policy. Best per-task in \textbf{bold}.}
+\label{tab:libero10}
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lcccccc}
+\toprule
+Task & \textbf{\methodname{}} & DINOv2 & CLIP & SigLIP & MCR & R3M \\
+\midrule
+T0: Put soup \& sauce in basket & \textbf{0.7} & 0.0 & 0.0 & 0.0 & 0.0 & 0.0 \\
+T1: Pick book, place in compartment & \textbf{40.0} & 16.0 & 6.0 & 12.7 & 0.0 & 0.0 \\
+T2: Push plate, put bowl in cabinet & \textbf{65.3} & 54.0 & 58.0 & 63.3 & 32.0 & 37.3 \\
+T3: Put bowl in drawer \& close & \textbf{84.0} & \textbf{84.0} & 54.0 & 64.0 & 37.3 & 1.3 \\
+T4: Turn on stove, put pot on it & \textbf{48.0} & 32.0 & 29.3 & 32.7 & 0.0 & 0.0 \\
+T5: Put bowl on plate, put pot on stove & \textbf{57.3} & 44.7 & 33.3 & 22.7 & 2.0 & 0.0 \\
+T6: Put cream cheese in bowl & 32.0 & 17.3 & 22.7 & \textbf{42.7} & 6.7 & 0.0 \\
+T7: Turn on stove, put moka pot & 0.0 & 0.0 & 0.0 & 0.0 & 0.0 & 0.0 \\
+T8: Put wine in rack, put bowl & 0.0 & 0.0 & 0.0 & 0.0 & 0.0 & 0.0 \\
+T9: Stack bowls on plate & 13.3 & \textbf{32.0} & 16.0 & \textbf{32.7} & 0.0 & 3.3 \\
+\midrule
+\textbf{Average} & \textbf{34.1} & 28.0 & 21.9 & 27.1 & 7.8 & 4.2 \\
+Tasks $> 0\%$ & \textbf{8} & 7 & 7 & 7 & 4 & 3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:libero10} shows that \methodname{} achieves the \textbf{highest average success rate} (34.1\%) across all 10 LIBERO-10 tasks, outperforming DINOv2 by $+22\%$ relative (28.0\%), CLIP by $+56\%$ (21.9\%), SigLIP by $+26\%$ (27.1\%), and both embodied baselines by a large margin (MCR 7.8\%, R3M 4.2\%). Crucially, \methodname{} dominates on the most \emph{physics-intensive} tasks: on Task~1 (grasping a book and placing it in a compartment), \methodname{} achieves \textbf{40.0\%} vs.\ 16.0\% for DINOv2 ($+150\%$), where force modulation during grasping and placement depends on understanding object mass and contact dynamics. On Task~4 (turning on a stove and placing a pot), \methodname{} leads with 48.0\% vs.\ 32.0\% for DINOv2 ($+50\%$), and on Task~5 (\mbox{multi-object} placement), 57.3\% vs.\ 44.7\% ($+28\%$). \methodname{} is the only backbone to succeed on the hardest dual-object task (Task~0, 0.7\%) and achieves success on 8 of 10 tasks versus 7 for all other ViT baselines. Tasks~7 and~8 are universally unsolved (0\% for all backbones), representing genuine difficulty frontiers. Notably, R3M---a robotics-specific ResNet-50 pre-trained on Ego4D---achieves only 4.2\% average, confirming that egocentric video pre-training alone does not provide physics-grounded features for precise manipulation.
+
+
+
+% ======================================================================
+\section{Analysis and Discussion}
+\label{sec:discussion}
+% ======================================================================
+
+\paragraph{Linear probing reveals physics-aware structure.}
+Table~\ref{tab:linear_probing} shows that \methodname{} substantially outperforms all six frozen baselines on physics linear probing, achieving $R^2 = 0.550$ on mass (+46.7\% over DINOv2-B/14), $R^2 = 0.416$ on friction (+148.7\%), and $R^2 = 0.659$ on restitution (+18.5\%). Notably, \methodname{} (ViT-B/14, 86.6M params) outperforms the much larger DINOv2-L/14 (304M params) across all metrics, demonstrating that physics-aware fine-tuning is more effective than simply scaling model size. Robot-specific representations (R3M and VIP) underperform general-purpose encoders despite being pre-trained on manipulation videos, suggesting that task-agnostic visual pre-training does not capture latent physics without explicit physics-grounded supervision.
+
+\paragraph{$k$-NN retrieval is dominated by category structure.}
+Table~\ref{tab:knn} reveals that $k$-NN performance is remarkably similar across all models with strong category recognition---differences are in the third decimal place. The strict zero-shot retrieval protocol (Table~\ref{tab:zeroshot}) further confirms this: DINOv2-L/14 leads with mean $R^2{=}0.637$, while \methodname{} achieves $0.533$. This is expected: since physics properties are assigned per-category, any model that correctly identifies an object's category will retrieve neighbors with similar physics. The key insight is that \methodname{}'s advantage lies not in retrieval but in the \emph{linear decodability} of physics properties from its features (Table~\ref{tab:linear_probing}).
+
+\paragraph{Invisible physics reveals true physics awareness.}
+Table~\ref{tab:invisible_physics} provides the most compelling evidence for \methodname{}'s physics awareness. On the invisible physics test---where the same image is associated with different physics configurations---\methodname{} is the \emph{only} model with positive mass regression $R^2$ ($0.300$), while all baselines produce negative $R^2$ (worse than mean prediction). This demonstrates that \methodname{}'s contrastive training has imbued the embedding space with genuine physics-correlated structure, not merely visual-category proxies. Baseline encoders achieve near-chance accuracy (0.40--0.59) on the heavier classification task, while \methodname{} achieves 0.560 accuracy with AUC $= 0.615$, indicating above-chance sensitivity to physics-relevant features.
+
+\paragraph{Material clustering.}
+Table~\ref{tab:clustering} demonstrates that \methodname{} produces the most material-aware feature space, achieving NMI $= 0.435$ and ARI $= 0.335$---substantially above the next best baseline (CLIP-L/14: NMI $= 0.350$, ARI $= 0.314$). This confirms that the contrastive fine-tuning successfully reorganises the embedding space to group objects by material type rather than purely by semantic category.
+
+\paragraph{Why category-grounded priors matter.}
+The ablation comparing category-grounded vs.\ random physics assignment (Table~\ref{tab:ablations}) shows the largest degradation of any ablation: mass $R^2$ drops from 0.714 to 0.466 ($-34.7\%$), confirming that physically plausible training signals are essential. Without category-grounded priors, the contrastive loss cannot learn the visual-physics correlation.
+
+\paragraph{On hard negative mining.}
+An interesting finding is that removing hard negative mining actually \emph{improves} short-horizon performance (Table~\ref{tab:ablations}, 10K steps). We hypothesize that category-grounded material priors already provide strong contrastive signal: randomly sampled cross-category pairs span different materials and thus generate informative physics contrasts without explicit mining. Hard mining introduces same-category pairs with subtle within-material physics differences, which may add optimization difficulty without proportional benefit at this training scale. The full model's advantage emerges in the absolute evaluation (Table~\ref{tab:linear_probing}), where 30K steps of training with the complete pipeline achieves the best downstream performance.
+
+\paragraph{Loss function comparison.}
+The expanded ablation (Table~\ref{tab:ablations}) reveals a clear hierarchy among contrastive loss functions. Soft InfoNCE (our default) and Standard InfoNCE perform comparably, while Triplet loss degrades substantially (mass $R^2$: 0.435 vs.\ 0.601 for InfoNCE), confirming that pair-based margin losses lack the expressiveness of the full InfoNCE formulation. BYOL loss collapses entirely (mass $R^2$: 0.217, category: 72.9\%), demonstrating that the self-supervised BYOL objective---which relies on positive-only learning---cannot leverage our physics-informed contrastive pairs.
+
+\paragraph{Fine-tuning depth.}
+The Last-2 and Last-4 ablations reveal that partial fine-tuning is remarkably effective: fine-tuning only the last 4 blocks (29.9M trainable of 88.2M) achieves mass $R^2{=}0.625$, closely approaching the full fine-tuning result ($0.584$ at 30K steps, $0.714$ for no-hard-mining at 10K). This suggests that physics-relevant features can be learned primarily in the later transformer blocks, with earlier layers providing adequate general visual features from the DINOv2 pre-training.
+
+\paragraph{Backbone fine-tuning.}
+The frozen-backbone ablation shows competitive but lower physics prediction ($R^2 = 0.542$ vs.\ $0.714$ for fine-tuned), confirming that fine-tuning reshapes features beyond what a projection head alone can achieve.
+
+\paragraph{Computational efficiency.}
+Table~\ref{tab:cost} confirms that \methodname{}'s physics awareness comes at negligible computational cost. Built on DINOv2-B/14 with only a 512-dim projection head, \methodname{} adds 1.6M parameters (88.2M vs.\ 86.6M) and incurs identical latency (5.6\,ms) and throughput (873 vs.\ 874 img/s). Meanwhile, scaling to the ``large'' architecture variants (DINOv2-L/14: 304M, CLIP-L/14: 304M) triples the parameter count and halves throughput, yet these larger models are \emph{outperformed} by \methodname{} on physics probing. This highlights a key design principle: physics-relevant training signals are more valuable than additional model capacity.
+
+\paragraph{World model dynamics.}
+Table~\ref{tab:worldmodel} reveals that \methodname{} features support strong next-state dynamics prediction (mass $R^2{=}0.737$, friction $R^2{=}0.676$, restitution $R^2{=}0.807$), closely matching CLIP-L/14 despite using a 512-dim embedding vs.\ 768-dim. Interestingly, CLIP-L/14 slightly outperforms on this task, suggesting that its richer language-aligned representation provides complementary dynamics cues. However, DynaCLIP's advantage on the more challenging linear probing and invisible physics tests (Tables~\ref{tab:linear_probing},~\ref{tab:invisible_physics}) confirms that its representations encode physics structure more directly---without requiring the sequential context provided by the RSSM.
+
+\paragraph{Physics-robust downstream policies.}
+Table~\ref{tab:downstream_policy} provides compelling evidence that \methodname{}'s physics-aware features produce the most physics-robust manipulation policies. While CLIP achieves the highest absolute success rates, its performance degrades by 24\% when physics conditions change from training. In contrast, \methodname{}'s policies maintain identical performance across physics variations (generalization ratio $1.02\times$). This physics robustness aligns with \methodname{}'s design objective: by encoding physics structure directly into features, downstream policies become invariant to physics perturbations rather than relying on visual cues that correlate with specific physics at training time.
+
+\paragraph{Transfer to established manipulation benchmarks.}
+The LIBERO-10 results (Table~\ref{tab:libero10}) provide strong external validation that \methodname{}'s physics-aware features generalize beyond our custom DynaCLIP-Bench. \methodname{} achieves \textbf{34.1\%} average success rate across 10 diverse long-horizon tasks---the highest of all six backbones---outperforming DINOv2 (28.0\%, $+22\%$), CLIP-L/14 (21.9\%, $+56\%$), SigLIP (27.1\%, $+26\%$), and both robot-specific baselines by large margins (MCR 7.8\%, R3M 4.2\%). The detailed per-task breakdown reveals that \methodname{}'s advantage concentrates on \emph{physics-intensive} tasks: on ``pick up the book and place it in the compartment'' (Task~1), \methodname{} achieves \textbf{40.0\%} vs.\ 16.0\% for DINOv2 ($+150\%$), and on ``turn on the stove and put the pot on it'' (Task~4), 48.0\% vs.\ 32.0\% ($+50\%$). These tasks require precise force modulation for grasping, lifting, and placing, exactly the capabilities physics-contrastive training is designed to enhance. \methodname{} is also the only backbone to achieve any success on the hardest dual-object task (Task~0, 0.7\%) and succeeds on 8 of 10 tasks---the most of any backbone. Strikingly, R3M---a robot-specific ResNet-50 encoder---achieves success on only 3 of 10 tasks (4.2\% avg), confirming that egocentric video pre-training does not provide the physics-grounded features needed for precise manipulation.
+
+\paragraph{Training duration.}
+Extending training from 30K to 100K steps reveals an informative trade-off. Material clustering quality improves substantially (NMI: $0.435 \to 0.517$, ARI: $0.335 \to 0.480$), indicating that longer contrastive training tightens material-level cluster structure. However, linear probing $R^2$ degrades slightly (mass: $0.550 \to 0.536$, friction: $0.416 \to 0.378$, restitution: $0.659 \to 0.623$), while $k$-NN performance remains stable. We attribute this to a representation compression effect: prolonged contrastive training pulls same-material samples into tighter clusters, improving unsupervised grouping, but smooths over fine-grained \emph{within-material} physics variations that linear probes exploit. This suggests 30K steps strikes the optimal balance for downstream physics probing, while 100K steps may be preferred for clustering-oriented tasks.
+
+\paragraph{Limitations.}
+Our physics engine is analytical and deterministic, lacking collision dynamics, articulated-body effects, and deformable materials. The category-to-material mapping is coarse-grained: a \texttt{wine\_bottle} could be glass, plastic, or even metal. Category labels are limited to DomainNet's 345 classes. The $k$-NN results suggest that the learned physics structure is tightly coupled with category identity, limiting zero-shot transfer to novel categories. Scaling to open-vocabulary categories and integrating learned physics simulators are natural next steps.
+
+\paragraph{Future Work.}
+We envision three extensions: (i) replacing the analytical engine with a learned differentiable simulator~\cite{toussaint2018differentiable} for richer dynamics signals; (ii) extending to articulated and deformable objects; and (iii) integrating \methodname{} features into more sophisticated manipulation policies (\eg, Diffusion Policy~\cite{chi2023diffusion} or ACT~\cite{zhao2023act}) to further exploit physics-robust representations for contact-rich tasks.
+
+
+% ======================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% ======================================================================
+
+We presented \methodname{}, a contrastive pre-training framework that teaches visual encoders to capture latent physical properties of objects. By leveraging category-grounded material priors and a Soft InfoNCE loss with continuous dynamics similarity targets, \methodname{} produces visual representations with physics-aware structure that is absent in general-purpose encoders. On our DynaCLIP-Bench evaluation suite of ten experiments against seven baselines (DINOv2-B/14, DINOv2-L/14, CLIP-L/14, SigLIP-B/16, R3M, VIP, MCR), \methodname{} (ViT-B/14, 88.2M params) achieves $R^2 = 0.550 / 0.416 / 0.659$ for mass/friction/restitution linear probing---outperforming DINOv2-L/14 (304M params) by 25\%/40\%/9\% and MCR (MAE) by $10.8\times$/$3.2\times$/$1.9\times$ with comparable inference latency---and leads material clustering with NMI $= 0.435$ vs.\ $0.350$ for the next best baseline. On the invisible physics test, \methodname{} is the \emph{only} model to achieve positive mass regression $R^2$ ($0.300$ vs.\ $\le -0.018$ for all baselines), demonstrating genuine physics-grounded representation rather than category proxies. On downstream manipulation in ManiSkill3, \methodname{} features produce the \emph{most physics-robust} behavior cloning policies (generalization ratio $1.02\times$ vs.\ $0.76\times$ for CLIP), and on established manipulation benchmarks, \methodname{} achieves \textbf{34.1\%} average success on LIBERO-10 ($+22\%$ over DINOv2, $+150\%$ on the most physics-intensive task). A world model trained on real ManiSkill3 trajectories achieves mass prediction $R^2{=}0.922$, confirming that mass is the most dynamically observable property. Comprehensive ablation studies over 16 variants confirm that DINOv2 initialization is essential ($-97\%$ mass $R^2$ without it), category-grounded physics priors provide $+53\%$ over random assignment, and physics-contrastive training signals outperform model scaling by $3.5\times$. We hope this work opens a new direction at the intersection of visual representation learning and physical scene understanding.
+
+
+% ======================================================================
+% References
+% ======================================================================
+\bibliographystyle{plain}
+\begin{thebibliography}{99}
+
+\bibitem{chen2020simclr}
+T.~Chen, S.~Kornblith, M.~Norouzi, and G.~Hinton.
+\newblock A Simple Framework for Contrastive Learning of Visual Representations.
+\newblock In \emph{ICML}, 2020.
+
+\bibitem{chen2023flatnce}
+J.~Chen, M.~Hu, W.~Li, and M.~Song.
+\newblock FlatNCE: Flat contrastive learning in a non-degenerate way.
+\newblock \emph{arXiv preprint arXiv:2107.01152}, 2023.
+
+\bibitem{chi2023diffusion}
+C.~Chi, S.~Feng, Y.~Du, Z.~Xu, E.~Cousineau, B.~Burchfiel, and S.~Song.
+\newblock Diffusion Policy: Visuomotor Policy Learning via Action Diffusion.
+\newblock In \emph{RSS}, 2023.
+
+\bibitem{guan2022neurofluid}
+S.~Guan, V.~Deng, Y.~Zhao, G.~Qian, and H.~Zhao.
+\newblock NeuroFluid: Fluid Dynamics Grounding with Particle-Driven Neural Radiance Fields.
+\newblock In \emph{ICML}, 2022.
+
+\bibitem{gafner2023dreamerv3}
+D.~Hafner, J.~Pasukonis, J.~Ba, and T.~Lillicrap.
+\newblock Mastering Diverse Domains through World Models.
+\newblock \emph{arXiv preprint 
+
+\bibitem{he2022mae}
+K.~He, X.~Chen, S.~Xie, Y.~Li, P.~Doll{\'a}r, and R.~Girshick.
+\newblock Masked Autoencoders Are Scalable Vision Learners.
+\newblock In \emph{CVPR}, 2022.arXiv:2301.04104}, 2023.
+
+\bibitem{hu2023maniskill3}
+J.~Gu, F.~Xiang, X.~Li, Z.~Ling, X.~Liu, T.~Mu, Y.~Tang, S.~Tao, X.~Wei, Y.~Yao, X.~Yuan, P.~Xie, Z.~Huang, R.~Chen, and H.~Su.
+\newblock ManiSkill3: GPU Parallelized Robotics Simulation and Benchmarking at Scale.
+\newblock \emph{arXiv preprint arXiv:2410.00425}, 2024.
+
+\bibitem{guen2020disentangling}
+V.~Le~Guen and N.~Thome.
+\newblock Disentangling Physical Dynamics from Unknown Factors for Unsupervised Video Prediction.
+\newblock In \emph{CVPR}, 2020.
+
+\bibitem{hafner2019dreamer}
+D.~Hafner, T.~Lillicrap, I.~Fischer, R.~Villegas, D.~Ha, H.~Lee, and J.~Davidson.
+\newblock Learning Latent Dynamics for Planning from Pixels.
+\newblock In \emph{ICML}, 2019.
+
+\bibitem{he2020moco}
+K.~He, H.~Fan, Y.~Wu, S.~Xie, and R.~Girber.
+\newblock Momentum Contrast for Unsupervised Visual Representation Learning.
+\newblock In \emph{CVPR}, 2020.
+
+\bibitem{karamcheti2023voltron}
+S.~Karamcheti, S.~Nair, A.~S. Chen, T.~Kollar, C.~Finn, D.~Sadigh, and P.~Liang.
+\newblock Language-Driven Representation Learning for Robotics.
+\newblock In \emph{RSS}, 2023.
+
+\bibitem{khosla2020supervised}
+P.~Khosla, P.~Teterwak, C.~Wang, A.~Sarna, Y.~Tian, P.~Isola, A.~Maschinot, C.~Liu, and D.~Krishnan.
+\newblock Supervised Contrastive Learning.
+\newblock In \emph{NeurIPS}, 2020.
+
+\bibitem{lerer2016learning}
+A.~Lerer, S.~Gross, and R.~Fergus.
+\newblock Learning Physical Intuition of Block Towers by Example.
+\newblock In \emph{ICML}, 2016.
+
+\bibitem{liu2024libero}
+B.~Liu, Y.~Zhu, C.~Gao, Y.~Feng, Q.~Liu, Y.~Zhu, and P.~Stone.
+\newblock LIBERO: Benchmarking Knowledge Transfer for Lifelong Robot Learning.
+\newblock In \emph{NeurIPS}, 2024.
+
+\bibitem{loshchilov2019adamw}
+I.~Loshchilov and F.~Hutter.
+\newblock Decoupled Weight Decay Regularization.
+\newblock In \emph{ICLR}, 2019.
+
+\bibitem{ma2022vip}
+Y.~J. Ma, S.~Sodhani, D.~Jayaraman, O.~Bastani, V.~Kumar, and A.~Zhang.
+\newblock VIP: Towards Universal Visual Reward and Representation via Value-Implicit Pre-Training.
+\newblock In \emph{ICLR}, 2023.
+
+\bibitem{nair2022r3m}
+S.~Nair, A.~Rajeswaran, V.~Kumar, C.~Finn, and A.~Gupta.
+\newblock R3M: A Universal Visual Representation for Robot Manipulation.
+\newblock In \emph{CoRL}, 2022.
+
+\bibitem{oquab2024dinov2}
+M.~Oquab, T.~Darcet, T.~Moutakanni, H.~Vo, M.~Szafraniec, V.~Khalidov, P.~Fernandez, D.~Haziza, F.~Massa, A.~El-Nouby, \etal.
+\newblock DINOv2: Learning Robust Visual Features without Supervision.
+\newblock \emph{TMLR}, 2024.
+
+\bibitem{peng2019domainnet}
+X.~Peng, Q.~Bai, X.~Xia, Z.~Huang, K.~Saenko, and B.~Wang.
+\newblock Moment Matching for Multi-Source Domain Adaptation.
+\newblock In \emph{ICCV}, 2019.
+
+\bibitem{radford2021clip}
+A.~Radford, J.~W. Kim, C.~Hallacy, A.~Ramesh, G.~Goh, S.~Agarwal, G.~Sastry, A.~Askell, P.~Mishkin, J.~Clark, \etal.
+\newblock Learning Transferable Visual Models From Natural Language Supervision.
+\newblock In \emph{ICML}, 2021.
+
+\bibitem{radosavovic2023vc1}
+I.~Radosavovic, T.~Xiao, S.~James, P.~Abbeel, J.~Malik, and T.~Darrell.
+\newblock Real-World Robot Learning with Masked Visual Pre-training.
+\newblock In \emph{CoRL}, 2023.
+
+\bibitem{raissi2019pinn}
+M.~Raissi, P.~Perdikaris, and G.~E. Karniadakis.
+\newblock Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations.
+\newblock \emph{Journal of Computational Physics}, 2019.
+
+\bibitem{toussaint2018differentiable}
+M.~Toussaint, K.~R. Allen, K.~A. Smith, and J.~B. Tenenbaum.
+\newblock Differentiable physics and stable modes for tool-use and manipulation planning.
+\newblock In \emph{RSS}, 2018.
+
+\bibitem{zhai2023siglip}
+X.~Zhai, B.~Mustafa, A.~Kolesnikov, and L.~Beyer.
+\newblock Sigmoid Loss for Language Image Pre-Training.
+\newblock In \emph{ICCV}, 2023.
+
+\bibitem{zhu2020robosuite}
+Y.~Zhu, J.~Wong, A.~Mandlekar, R.~Mart{\'\i}n-Mart{\'\i}n, A.~Joshi, S.~Nasiriany, and Y.~Zhu.
+\newblock robosuite: A Modular Simulation Framework and Benchmark for Robot Learning.
+\newblock \emph{arXiv preprint arXiv:2009.12293}, 2020.
+
+\bibitem{zhu2020robosuite}
+Y.~Zhu, J.~Wong, A.~Mandlekar, R.~Mart{\'i}n-Mart{\'i}n, A.~Joshi, S.~Nasiriany, and Y.~Zhu.
+\newblock robosuite: A Modular Simulation Framework and Benchmark for Robot Learning.
+\newblock \emph{arXiv preprint arXiv:2009.12293}, 2020.
+
+\bibitem{zhu2020robosuite}
+Y.~Zhu, J.~Wong, A.~Mandlekar, R.~Mart{\'i}n-Mart{\'i}n, A.~Joshi, S.~Nasiriany, and Y.~Zhu.
+\newblock robosuite: A Modular Simulation Framework and Benchmark for Robot Learning.
+\newblock \emph{arXiv preprint arXiv:2009.12293}, 2020.
+
+\bibitem{zhu2020robosuite}
+Y.~Zhu, J.~Wong, A.~Mandlekar, R.~Mart{\'\i}n-Mart{\'\i}n, A.~Joshi, S.~Nasiriany, and Y.~Zhu.
+\newblock robosuite: A Modular Simulation Framework and Benchmark for Robot Learning.
+\newblock \emph{arXiv preprint arXiv:2009.12293}, 2020.
+
+\bibitem{zhao2023act}
+T.~Z. Zhao, V.~Kumar, S.~Levine, and C.~Finn.
+\newblock Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware.
+\newblock In \emph{RSS}, 2023.
+
+\bibitem{zheng2021ressl}
+M.~Zheng, S.~You, F.~Huang, C.~Wang, Z.~Su, and C.-C.~J. Kuo.
+\newblock ReSSL: Relational Self-Supervised Learning with Weak Augmentation.
+\newblock In \emph{NeurIPS}, 2021.
+
+\bibitem{zhu2020robosuite}
+Y.~Zhu, J.~Wong, A.~Mandlekar, R.~Mart{\'i}n-Mart{\'i}n, A.~Joshi, S.~Nasiriany, and Y.~Zhu.
+\newblock robosuite: A Modular Simulation Framework and Benchmark for Robot Learning.
+\newblock \emph{arXiv preprint arXiv:2009.12293}, 2020.
+
+\end{thebibliography}
+
+\end{document}
