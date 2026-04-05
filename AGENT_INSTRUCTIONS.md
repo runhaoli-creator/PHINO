@@ -10,7 +10,7 @@ We switched from **parameter-distance** soft labels (V2) back to **trajectory-ba
 
 **Code changes already made** (in this commit):
 
-1. `dynaclip/data/dataset.py` — `_compute_proxy_similarity()` now computes **actual trajectory similarity** on the fly using the analytical physics engine, instead of falling back to parameter L2 distance. When a pair's similarity isn't in the precomputed `similarity_matrix.npz`, it generates trajectories and computes L2-based similarity in real time.
+1. `dynaclip/data/dataset.py` — `_compute_proxy_similarity()` now computes **actual trajectory similarity** using the analytical physics engine, instead of falling back to parameter L2 distance. A new `_get_trajectory()` method handles trajectory computation with three-level lookup: (1) in-memory cache, (2) precomputed `.npz` fingerprint on disk, (3) on-the-fly computation via the physics engine. This ensures all training pairs use real trajectory similarity while keeping dataset initialization fast.
 
 2. `configs/pretrain_v3.yaml` — New config using `soft_infonce` loss with `use_physics_vectors: false` and `wiseft_alpha: 0.1`.
 
@@ -231,7 +231,7 @@ python scripts/evaluate_calvin_offline.py \
 
 1. **Dataset root**: Make sure `<YOUR_DATASET_ROOT>` contains `domainnet/real/` with the 345 category subdirectories. The generation script expects this structure.
 
-2. **Trajectory precomputation coverage**: The `similarity_matrix.npz` stores 500K precomputed pairs. For pairs not in this cache, the updated `_compute_proxy_similarity()` in `dataset.py` now computes trajectory similarity on the fly using the analytical physics engine. This is slower than the old parameter-distance proxy (~10ms per pair vs <1ms) but ensures all training pairs use real trajectory similarity, not a linear approximation. If dataset initialization is too slow, increase `max_sim_pairs` in `DynaCLIPDataGenerator.generate_all()` to 1M or 2M.
+2. **Trajectory computation**: The updated `dataset.py` uses a three-level trajectory lookup: (1) in-memory cache (instant), (2) precomputed `.npz` fingerprint files on disk (fast), (3) on-the-fly computation via the physics engine (~10ms per entry). After the first pass through all entries, trajectories are fully cached in memory. The `similarity_matrix.npz` provides precomputed pairwise similarities for 500K pairs; uncovered pairs compute trajectory similarity on the fly. If dataset initialization is too slow, increase `max_sim_pairs` in `DynaCLIPDataGenerator.generate_all()` to 1M or 2M.
 
 3. **V3 vs V2 comparison**: If V3 probing is better but LIBERO is slightly worse (e.g., 58% vs 60.4%), this is actually fine. We can report both and discuss trajectory vs parameter distance as an ablation. The key requirement is that V3 LIBERO must be clearly above random physics baseline.
 

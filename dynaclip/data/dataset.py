@@ -170,33 +170,58 @@ class DynaCLIPContrastiveDataset(Dataset):
             return self.sim_lookup[(i, j)]
         return self._compute_proxy_similarity(i, j)
 
+    def _get_trajectory(self, idx: int) -> np.ndarray:
+        """Get trajectory fingerprint for an entry, with caching.
+
+        First checks if a precomputed fingerprint .npz exists on disk.
+        If not, computes it on the fly using the analytical physics engine.
+        Results are cached in memory to avoid redundant computation.
+        """
+        if not hasattr(self, '_traj_cache'):
+            self._traj_cache = {}
+            from dynaclip.data.generation import AnalyticalPhysicsEngine
+            self._engine = AnalyticalPhysicsEngine()
+
+        if idx in self._traj_cache:
+            return self._traj_cache[idx]
+
+        # Try loading precomputed fingerprint from disk
+        fp_path = self.metadata[idx].get("fingerprint_path")
+        if fp_path and Path(fp_path).exists():
+            data = np.load(fp_path)
+            traj = data["flat_trajectory"]
+            self._traj_cache[idx] = traj
+            return traj
+
+        # Compute on the fly
+        from dynaclip.data.generation import (
+            PhysicsConfig, DIAGNOSTIC_ACTIONS,
+        )
+        m = self.metadata[idx]
+        physics = PhysicsConfig(
+            mass=m["mass"],
+            static_friction=m["static_friction"],
+            restitution=m["restitution"],
+            material=m.get("material", "default"),
+        )
+        traj = np.concatenate([
+            self._engine.execute_diagnostic_action(a, physics)
+            for a in DIAGNOSTIC_ACTIONS
+        ])
+        self._traj_cache[idx] = traj
+        return traj
+
     def _compute_proxy_similarity(self, i: int, j: int) -> float:
-        """Compute dynamics similarity from physics trajectories on the fly.
+        """Compute dynamics similarity from physics trajectories.
 
         Uses the analytical physics engine to generate trajectories for both
         entries and computes L2-based similarity. This replaces the old
         parameter-distance proxy with actual trajectory similarity.
+        Trajectories are cached in memory for efficiency.
         """
-        from dynaclip.data.generation import (
-            PhysicsConfig, AnalyticalPhysicsEngine, DIAGNOSTIC_ACTIONS,
-            compute_dynamics_similarity_l2,
-        )
-        m_i, m_j = self.metadata[i], self.metadata[j]
-        pi = PhysicsConfig(
-            mass=m_i["mass"],
-            static_friction=m_i["static_friction"],
-            restitution=m_i["restitution"],
-            material=m_i.get("material", "default"),
-        )
-        pj = PhysicsConfig(
-            mass=m_j["mass"],
-            static_friction=m_j["static_friction"],
-            restitution=m_j["restitution"],
-            material=m_j.get("material", "default"),
-        )
-        engine = AnalyticalPhysicsEngine()
-        traj_i = np.concatenate([engine.execute_diagnostic_action(a, pi) for a in DIAGNOSTIC_ACTIONS])
-        traj_j = np.concatenate([engine.execute_diagnostic_action(a, pj) for a in DIAGNOSTIC_ACTIONS])
+        from dynaclip.data.generation import compute_dynamics_similarity_l2
+        traj_i = self._get_trajectory(i)
+        traj_j = self._get_trajectory(j)
         return compute_dynamics_similarity_l2(traj_i, traj_j)
 
     def __len__(self) -> int:
