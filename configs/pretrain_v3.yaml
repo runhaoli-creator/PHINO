@@ -1,0 +1,62 @@
+# DynaCLIP V3 Pre-training Configuration
+# Key change from V2: Switch from parameter-distance loss (PairwisePhysicsRnCLoss)
+# back to trajectory-based similarity (SoftInfoNCELoss).
+#
+# Rationale: Trajectory similarity captures nonlinear physics interactions
+# (mass × friction → sliding distance, mass × restitution → bounce pattern)
+# that parameter L2 distance cannot encode. V1 ablation showed trajectory-based
+# "no hard mining" variant achieved Mass R²=0.714 vs V2's 0.553.
+#
+# Changes from V2:
+#   1. loss: soft_infonce (trajectory similarity) instead of pairwise_physics (param L2)
+#   2. use_physics_vectors: false (loss takes dynamics_sim, not physics vectors)
+#   3. Data: must be generated with full trajectory precomputation
+
+# Model (same as V2)
+model:
+  backbone: "dinov2_vitb14"
+  embed_dim: 512
+  freeze_backbone: false
+  unfreeze_last_n_blocks: -1
+  gradient_checkpointing: true
+
+# Loss: SoftInfoNCE with trajectory-based dynamics similarity
+loss:
+  name: "soft_infonce"
+  temperature: 0.07
+  similarity_temperature: 0.1
+  learnable_temperature: true
+
+# Training (same as V2 + WiSE-FT)
+training:
+  backbone_lr: 1.0e-5
+  head_lr: 1.0e-3
+  weight_decay: 0.05
+  warmup_steps: 333
+  total_steps: 20000
+  batch_size: 1024
+  grad_accum_steps: 1
+  use_bf16: true
+  wiseft_alpha: 0.1
+  use_physics_vectors: false    # Key change: use dynamics_sim, not physics vectors
+
+# Data: NO hard mining, trajectory-based similarity
+data:
+  data_dir: "data_cache/dynaclip_v3_data"
+  num_pairs: 500000
+  hard_neg_ratio: 0.0
+  hard_pos_ratio: 0.0
+  num_workers: 8
+
+# Logging
+logging:
+  log_every: 50
+  eval_every: 2000
+  save_every: 2000
+  use_wandb: false
+  project_name: "dynaclip_v3"
+
+# Output
+output:
+  checkpoint_dir: "checkpoints/pretrain_v3"
+  log_dir: "logs/pretrain_v3"

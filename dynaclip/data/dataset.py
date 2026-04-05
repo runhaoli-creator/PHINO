@@ -171,13 +171,33 @@ class DynaCLIPContrastiveDataset(Dataset):
         return self._compute_proxy_similarity(i, j)
 
     def _compute_proxy_similarity(self, i: int, j: int) -> float:
-        """Compute proxy dynamics similarity from physics properties."""
+        """Compute dynamics similarity from physics trajectories on the fly.
+
+        Uses the analytical physics engine to generate trajectories for both
+        entries and computes L2-based similarity. This replaces the old
+        parameter-distance proxy with actual trajectory similarity.
+        """
+        from dynaclip.data.generation import (
+            PhysicsConfig, AnalyticalPhysicsEngine, DIAGNOSTIC_ACTIONS,
+            compute_dynamics_similarity_l2,
+        )
         m_i, m_j = self.metadata[i], self.metadata[j]
-        mass_diff = abs(np.log(m_i["mass"] + 1e-6) - np.log(m_j["mass"] + 1e-6))
-        fric_diff = abs(m_i["static_friction"] - m_j["static_friction"])
-        rest_diff = abs(m_i["restitution"] - m_j["restitution"])
-        dist = np.sqrt(mass_diff**2 + fric_diff**2 + rest_diff**2)
-        return float(np.clip(np.exp(-dist / 2.0), 0.0, 1.0))
+        pi = PhysicsConfig(
+            mass=m_i["mass"],
+            static_friction=m_i["static_friction"],
+            restitution=m_i["restitution"],
+            material=m_i.get("material", "default"),
+        )
+        pj = PhysicsConfig(
+            mass=m_j["mass"],
+            static_friction=m_j["static_friction"],
+            restitution=m_j["restitution"],
+            material=m_j.get("material", "default"),
+        )
+        engine = AnalyticalPhysicsEngine()
+        traj_i = np.concatenate([engine.execute_diagnostic_action(a, pi) for a in DIAGNOSTIC_ACTIONS])
+        traj_j = np.concatenate([engine.execute_diagnostic_action(a, pj) for a in DIAGNOSTIC_ACTIONS])
+        return compute_dynamics_similarity_l2(traj_i, traj_j)
 
     def __len__(self) -> int:
         return len(self.pairs)
