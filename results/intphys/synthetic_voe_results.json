@@ -1,0 +1,110 @@
+{
+  "material_swap/traj_diff": {
+    "plausible_mean": 67.36163950515702,
+    "plausible_std": 221.1215164349455,
+    "implausible_mean": 345.54332944057904,
+    "implausible_std": 1660.7520311045366,
+    "pairwise_different": 1.0,
+    "pairwise_implausible_higher": 0.47,
+    "n_pairs": 200
+  },
+  "material_swap/max_jump": {
+    "plausible_mean": 2.103534431131514,
+    "plausible_std": 4.06439840260282,
+    "implausible_mean": 3.4458496673336505,
+    "implausible_std": 9.403814732282122,
+    "pairwise_different": 1.0,
+    "pairwise_implausible_higher": 0.43,
+    "n_pairs": 200
+  },
+  "material_swap/vel_var": {
+    "plausible_mean": 1.7835521918761765,
+    "plausible_std": 7.21231912430317,
+    "implausible_mean": 38.232794043953334,
+    "implausible_std": 232.67720652143137,
+    "pairwise_different": 0.985,
+    "pairwise_implausible_higher": 0.41,
+    "n_pairs": 200
+  },
+  "material_swap/pos_range": {
+    "plausible_mean": 1.8816587032280865,
+    "plausible_std": 5.246714206163397,
+    "implausible_mean": 7.73870347080694,
+    "implausible_std": 29.22972639523294,
+    "pairwise_different": 0.605,
+    "pairwise_implausible_higher": 0.325,
+    "n_pairs": 200
+  },
+  "mass_violation/traj_diff": {
+    "plausible_mean": 1359.5892269853496,
+    "plausible_std": 10953.638687102559,
+    "implausible_mean": 95871.6564953223,
+    "implausible_std": 1046035.2275605703,
+    "pairwise_different": 0.88,
+    "pairwise_implausible_higher": 0.53,
+    "n_pairs": 200
+  },
+  "mass_violation/max_jump": {
+    "plausible_mean": 4.595186674065512,
+    "plausible_std": 20.369738311111497,
+    "implausible_mean": 24.696079511520626,
+    "implausible_std": 173.9457227544115,
+    "pairwise_different": 0.93,
+    "pairwise_implausible_higher": 0.535,
+    "n_pairs": 200
+  },
+  "mass_violation/vel_var": {
+    "plausible_mean": 27.69027137564619,
+    "plausible_std": 138.1577929322921,
+    "implausible_mean": 2022.7385751550057,
+    "implausible_std": 14047.069324688118,
+    "pairwise_different": 0.675,
+    "pairwise_implausible_higher": 0.51,
+    "n_pairs": 200
+  },
+  "mass_violation/pos_range": {
+    "plausible_mean": 6.394681582647736,
+    "plausible_std": 21.275256242339033,
+    "implausible_mean": 45.56373302576766,
+    "implausible_std": 187.1779362883892,
+    "pairwise_different": 0.62,
+    "pairwise_implausible_higher": 0.41,
+    "n_pairs": 200
+  },
+  "bounce_violation/traj_diff": {
+    "plausible_mean": 1954.7274421017355,
+    "plausible_std": 8989.313391359115,
+    "implausible_mean": 1955.2823922200769,
+    "implausible_std": 8989.19092036064,
+    "pairwise_different": 0.495,
+    "pairwise_implausible_higher": 0.335,
+    "n_pairs": 200
+  },
+  "bounce_violation/max_jump": {
+    "plausible_mean": 4.426915928609831,
+    "plausible_std": 8.310749217076362,
+    "implausible_mean": 4.590615348483926,
+    "implausible_std": 8.23922505571338,
+    "pairwise_different": 0.495,
+    "pairwise_implausible_higher": 0.335,
+    "n_pairs": 200
+  },
+  "bounce_violation/vel_var": {
+    "plausible_mean": 2221.9909663044814,
+    "plausible_std": 10295.83629360815,
+    "implausible_mean": 2221.9940661348787,
+    "implausible_std": 10295.835624543673,
+    "pairwise_different": 0.49,
+    "pairwise_implausible_higher": 0.335,
+    "n_pairs": 200
+  },
+  "bounce_violation/pos_range": {
+    "plausible_mean": 87.02506480885619,
+    "plausible_std": 216.70808921631524,
+    "implausible_mean": 87.03335579027168,
+    "implausible_std": 216.70476214683848,
+    "pairwise_different": 0.4,
+    "pairwise_implausible_higher": 0.285,
+    "n_pairs": 200
+  }
+}

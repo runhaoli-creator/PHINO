@@ -1,0 +1,56 @@
+{
+  "DynaCLIP-V2": {
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.5701581027667985,
+    "all_accuracies": {
+      "embedding_diff": 0.49703557312252966,
+      "max_jump": 0.4891304347826087,
+      "prediction_error": 0.5701581027667985
+    }
+  },
+  "DynaCLIP-V3": {
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.5800395256916996,
+    "all_accuracies": {
+      "embedding_diff": 0.5217391304347826,
+      "max_jump": 0.5019762845849802,
+      "prediction_error": 0.5800395256916996
+    }
+  },
+  "dinov2_vitb14": {
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.5889328063241107,
+    "all_accuracies": {
+      "embedding_diff": 0.5049407114624506,
+      "max_jump": 0.4990118577075099,
+      "prediction_error": 0.5889328063241107
+    }
+  },
+  "dinov2_vitl14": {
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.5958498023715415,
+    "all_accuracies": {
+      "embedding_diff": 0.48023715415019763,
+      "max_jump": 0.48122529644268774,
+      "prediction_error": 0.5958498023715415
+    }
+  },
+  "clip_vitl14": {
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.6650197628458498,
+    "all_accuracies": {
+      "embedding_diff": 0.5118577075098815,
+      "max_jump": 0.5098814229249012,
+      "prediction_error": 0.6650197628458498
+    }
+  },
+  "siglip_vitb16": {
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.6650197628458498,
+    "all_accuracies": {
+      "embedding_diff": 0.5049407114624506,
+      "max_jump": 0.5049407114624506,
+      "prediction_error": 0.6650197628458498
+    }
+  }
+}

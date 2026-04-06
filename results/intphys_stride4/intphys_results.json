@@ -1,0 +1,326 @@
+{
+  "DynaCLIP-V2": {
+    "all_metrics": {
+      "embedding_diff": {
+        "overall": {
+          "accuracy": 0.5019762845849802,
+          "correct": 508,
+          "total": 1012
+        },
+        "by_condition": {
+          "solidity": {
+            "accuracy": 0.4828767123287671,
+            "correct": 141,
+            "total": 292
+          },
+          "permanence": {
+            "accuracy": 0.5416666666666666,
+            "correct": 130,
+            "total": 240
+          },
+          "immutability": {
+            "accuracy": 0.5208333333333334,
+            "correct": 125,
+            "total": 240
+          },
+          "continuity": {
+            "accuracy": 0.4666666666666667,
+            "correct": 112,
+            "total": 240
+          }
+        },
+        "by_difficulty": {
+          "Easy": {
+            "accuracy": 0.5,
+            "correct": 52,
+            "total": 104
+          },
+          "Medium": {
+            "accuracy": 0.4925,
+            "correct": 197,
+            "total": 400
+          },
+          "Hard": {
+            "accuracy": 0.5089285714285714,
+            "correct": 171,
+            "total": 336
+          },
+          "Unknown": {
+            "accuracy": 0.5116279069767442,
+            "correct": 88,
+            "total": 172
+          }
+        }
+      },
+      "max_jump": {
+        "overall": {
+          "accuracy": 0.4871541501976285,
+          "correct": 493,
+          "total": 1012
+        },
+        "by_condition": {
+          "solidity": {
+            "accuracy": 0.4965753424657534,
+            "correct": 145,
+            "total": 292
+          },
+          "permanence": {
+            "accuracy": 0.45416666666666666,
+            "correct": 109,
+            "total": 240
+          },
+          "immutability": {
+            "accuracy": 0.49166666666666664,
+            "correct": 118,
+            "total": 240
+          },
+          "continuity": {
+            "accuracy": 0.5041666666666667,
+            "correct": 121,
+            "total": 240
+          }
+        },
+        "by_difficulty": {
+          "Easy": {
+            "accuracy": 0.46153846153846156,
+            "correct": 48,
+            "total": 104
+          },
+          "Medium": {
+            "accuracy": 0.52,
+            "correct": 208,
+            "total": 400
+          },
+          "Hard": {
+            "accuracy": 0.4583333333333333,
+            "correct": 154,
+            "total": 336
+          },
+          "Unknown": {
+            "accuracy": 0.48255813953488375,
+            "correct": 83,
+            "total": 172
+          }
+        }
+      },
+      "prediction_error": {
+        "overall": {
+          "accuracy": 0.5642292490118577,
+          "correct": 571,
+          "total": 1012
+        },
+        "by_condition": {
+          "solidity": {
+            "accuracy": 0.565068493150685,
+            "correct": 165,
+            "total": 292
+          },
+          "permanence": {
+            "accuracy": 0.5833333333333334,
+            "correct": 140,
+            "total": 240
+          },
+          "immutability": {
+            "accuracy": 0.5666666666666667,
+            "correct": 136,
+            "total": 240
+          },
+          "continuity": {
+            "accuracy": 0.5416666666666666,
+            "correct": 130,
+            "total": 240
+          }
+        },
+        "by_difficulty": {
+          "Easy": {
+            "accuracy": 0.5673076923076923,
+            "correct": 59,
+            "total": 104
+          },
+          "Medium": {
+            "accuracy": 0.5475,
+            "correct": 219,
+            "total": 400
+          },
+          "Hard": {
+            "accuracy": 0.5863095238095238,
+            "correct": 197,
+            "total": 336
+          },
+          "Unknown": {
+            "accuracy": 0.5581395348837209,
+            "correct": 96,
+            "total": 172
+          }
+        }
+      }
+    },
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.5642292490118577,
+    "encoding_time_sec": 361.5586199760437,
+    "num_videos": 1012,
+    "num_pairs": 1012
+  },
+  "dinov2_vitb14": {
+    "all_metrics": {
+      "embedding_diff": {
+        "overall": {
+          "accuracy": 0.5098814229249012,
+          "correct": 516,
+          "total": 1012
+        },
+        "by_condition": {
+          "solidity": {
+            "accuracy": 0.4965753424657534,
+            "correct": 145,
+            "total": 292
+          },
+          "permanence": {
+            "accuracy": 0.5583333333333333,
+            "correct": 134,
+            "total": 240
+          },
+          "immutability": {
+            "accuracy": 0.5041666666666667,
+            "correct": 121,
+            "total": 240
+          },
+          "continuity": {
+            "accuracy": 0.48333333333333334,
+            "correct": 116,
+            "total": 240
+          }
+        },
+        "by_difficulty": {
+          "Easy": {
+            "accuracy": 0.5096153846153846,
+            "correct": 53,
+            "total": 104
+          },
+          "Medium": {
+            "accuracy": 0.505,
+            "correct": 202,
+            "total": 400
+          },
+          "Hard": {
+            "accuracy": 0.4791666666666667,
+            "correct": 161,
+            "total": 336
+          },
+          "Unknown": {
+            "accuracy": 0.5813953488372093,
+            "correct": 100,
+            "total": 172
+          }
+        }
+      },
+      "max_jump": {
+        "overall": {
+          "accuracy": 0.5158102766798419,
+          "correct": 522,
+          "total": 1012
+        },
+        "by_condition": {
+          "solidity": {
+            "accuracy": 0.5273972602739726,
+            "correct": 154,
+            "total": 292
+          },
+          "permanence": {
+            "accuracy": 0.5,
+            "correct": 120,
+            "total": 240
+          },
+          "immutability": {
+            "accuracy": 0.5375,
+            "correct": 129,
+            "total": 240
+          },
+          "continuity": {
+            "accuracy": 0.49583333333333335,
+            "correct": 119,
+            "total": 240
+          }
+        },
+        "by_difficulty": {
+          "Easy": {
+            "accuracy": 0.4326923076923077,
+            "correct": 45,
+            "total": 104
+          },
+          "Medium": {
+            "accuracy": 0.5525,
+            "correct": 221,
+            "total": 400
+          },
+          "Hard": {
+            "accuracy": 0.49404761904761907,
+            "correct": 166,
+            "total": 336
+          },
+          "Unknown": {
+            "accuracy": 0.5232558139534884,
+            "correct": 90,
+            "total": 172
+          }
+        }
+      },
+      "prediction_error": {
+        "overall": {
+          "accuracy": 0.5968379446640316,
+          "correct": 604,
+          "total": 1012
+        },
+        "by_condition": {
+          "solidity": {
+            "accuracy": 0.589041095890411,
+            "correct": 172,
+            "total": 292
+          },
+          "permanence": {
+            "accuracy": 0.6,
+            "correct": 144,
+            "total": 240
+          },
+          "immutability": {
+            "accuracy": 0.6166666666666667,
+            "correct": 148,
+            "total": 240
+          },
+          "continuity": {
+            "accuracy": 0.5833333333333334,
+            "correct": 140,
+            "total": 240
+          }
+        },
+        "by_difficulty": {
+          "Easy": {
+            "accuracy": 0.6153846153846154,
+            "correct": 64,
+            "total": 104
+          },
+          "Medium": {
+            "accuracy": 0.605,
+            "correct": 242,
+            "total": 400
+          },
+          "Hard": {
+            "accuracy": 0.5535714285714286,
+            "correct": 186,
+            "total": 336
+          },
+          "Unknown": {
+            "accuracy": 0.6511627906976745,
+            "correct": 112,
+            "total": 172
+          }
+        }
+      }
+    },
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.5968379446640316,
+    "encoding_time_sec": 350.3583068847656,
+    "num_videos": 1012,
+    "num_pairs": 1012
+  }
+}

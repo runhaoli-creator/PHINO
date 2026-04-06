@@ -1,0 +1,20 @@
+{
+  "DynaCLIP-V2": {
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.5909090909090909,
+    "all_accuracies": {
+      "embedding_diff": 0.4950592885375494,
+      "max_jump": 0.516798418972332,
+      "prediction_error": 0.5909090909090909
+    }
+  },
+  "dinov2_vitb14": {
+    "best_metric": "prediction_error",
+    "best_accuracy": 0.6146245059288538,
+    "all_accuracies": {
+      "embedding_diff": 0.49110671936758893,
+      "max_jump": 0.5276679841897233,
+      "prediction_error": 0.6146245059288538
+    }
+  }
+}
