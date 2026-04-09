@@ -1,0 +1,28 @@
+{
+  "experiment": "Linear Probing for Physics Properties",
+  "model": "PHINO (V4, bug-fixed trajectory similarity)",
+  "eval_data": "PHINO training data (multi-material, full trajectory MSE similarity)",
+  "protocol": "Frozen backbone -> Ridge regression, 5 seeds",
+  "results": {
+    "PHINO": {
+      "mass_r2": 0.1853,
+      "friction_r2": 0.0634,
+      "restitution_r2": 0.2646
+    },
+    "DINOv2-B/14": {
+      "mass_r2": 0.0933,
+      "friction_r2": -0.2376,
+      "restitution_r2": 0.1191
+    }
+  },
+  "improvement": {
+    "mass": "+98.6% (~2x)",
+    "friction": "neg -> pos, delta 0.30",
+    "restitution": "+122% (~2.2x)"
+  },
+  "notes": [
+    "PHINO uses 1536d features (CLS + mean pool), DINOv2 uses 768d (CLS only)",
+    "Bug fixes applied: full trajectory MSE (not last frame), fixed soft labels, WiSE-FT dtype",
+    "Absolute R² values lower than V1 due to different eval data (multi-material vs deterministic mapping)"
+  ]
+}
