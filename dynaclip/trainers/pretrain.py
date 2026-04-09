@@ -286,6 +286,7 @@ class DynaCLIPTrainer:
                         frozen_cls = frozen_out[:, 0]
                         frozen_patch = frozen_out[:, 1:]
                     frozen_feats = torch.cat([frozen_cls, frozen_patch.mean(dim=1)], dim=-1)
+                    frozen_feats = frozen_feats.to(dtype=self.amp_dtype)  # Match AMP dtype
 
                 live_feats = raw_model.extract_features(img_i)
                 reg_loss = F.mse_loss(live_feats, frozen_feats)

@@ -82,17 +82,18 @@ class SoftInfoNCELoss(nn.Module):
     ) -> torch.Tensor:
         """Build B x B similarity matrix from pair similarities.
 
-        Diagonal = pair_sim[i] (similarity between matched pair i).
-        Off-diagonal: geometric mean approximation * 0.5.
+        Diagonal = pair_sim[i] (dynamics similarity between matched pair i).
+        Off-diagonal = 0 (we don't have cross-pair dynamics similarity).
+
+        Previous version used geometric mean sqrt(sim_i * sim_j) * 0.5 for
+        off-diagonal, but sim_i is the similarity of pair i (anchor_i, pos_i)
+        and sim_j is of pair j (anchor_j, pos_j) — mixing them has no physical
+        meaning. With off-diagonal=0, softmax produces a distribution that peaks
+        at the diagonal (matched pair) weighted by pair_sim, effectively making
+        high-similarity pairs contribute more to the loss.
         """
-        # Off-diagonal: geometric mean approximation
-        pair_sim_i = pair_sim.unsqueeze(1).expand(B, B)
-        pair_sim_j = pair_sim.unsqueeze(0).expand(B, B)
-        sim_matrix = torch.sqrt(pair_sim_i * pair_sim_j + 1e-8) * 0.5
-
-        # Diagonal: vectorized assignment (no Python loop)
+        sim_matrix = torch.zeros(B, B, device=device)
         sim_matrix.diagonal().copy_(pair_sim)
-
         return sim_matrix
 
 

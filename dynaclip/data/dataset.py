@@ -188,11 +188,16 @@ class DynaCLIPContrastiveDataset(Dataset):
 
         # Try loading precomputed fingerprint from disk
         fp_path = self.metadata[idx].get("fingerprint_path")
-        if fp_path and Path(fp_path).exists():
-            data = np.load(fp_path)
-            traj = data["flat_trajectory"]
-            self._traj_cache[idx] = traj
-            return traj
+        if fp_path:
+            fp = Path(fp_path)
+            # Handle absolute paths that don't exist (data moved to different machine)
+            if not fp.is_absolute() or not fp.exists():
+                fp = self.data_dir / fp.name  # Try relative to data_dir
+            if fp.exists():
+                data = np.load(fp)
+                traj = data["flat_trajectory"]
+                self._traj_cache[idx] = traj
+                return traj
 
         # Compute on the fly using analytical physics engine
         from dynaclip.data.generation import PhysicsConfig, DIAGNOSTIC_ACTIONS

@@ -472,8 +472,14 @@ def compute_dynamics_similarity_dtw(traj1: np.ndarray, traj2: np.ndarray) -> flo
         return compute_dynamics_similarity_l2(traj1, traj2)
 
 def compute_dynamics_similarity_l2(traj1: np.ndarray, traj2: np.ndarray) -> float:
-    diff = np.linalg.norm(traj1[-1] - traj2[-1])
-    return float(np.exp(-diff / 5.0))
+    """Compute dynamics similarity using full trajectory MSE.
+
+    Previous version only compared traj[-1] (last frame), discarding all
+    mid-trajectory signals: friction (sliding deceleration in frames 1-30),
+    restitution (bounce pattern in frames 10-40). Now uses full trajectory.
+    """
+    mse = np.mean((traj1 - traj2) ** 2)
+    return float(np.exp(-mse / 5.0))
 
 def compute_dynamics_similarity_mse(traj1: np.ndarray, traj2: np.ndarray) -> float:
     mse = np.mean((traj1 - traj2) ** 2)
